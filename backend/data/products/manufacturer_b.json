@@ -1,0 +1,20 @@
+{
+    "manufacturer": "上海冠龙",
+    "contact": "张经理",
+    "phone": "021-87654321",
+    "address": "上海市",
+    "products": [
+        {
+            "product_name": "DN100蝶阀",
+            "product_code": "D371X-16",
+            "spec": "DN100",
+            "params": {
+                "阀门类型": "蝶阀",
+                "外径": 230,
+                "长度": 52,
+                "重量": 8,
+                "材质": "球墨铸铁"
+            }
+        }
+    ]
+}

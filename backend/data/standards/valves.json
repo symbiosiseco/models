@@ -1,0 +1,27 @@
+{
+    "_source": "参考 GB/T 12224、GB/T 12238 等",
+    "_unit": {"outer": "mm", "length": "mm", "weight": "kg"},
+    "valves": {
+        "闸阀": {
+            "DN50":  {"outer": 165, "length": 200, "weight": 10},
+            "DN80":  {"outer": 200, "length": 240, "weight": 12},
+            "DN100": {"outer": 220, "length": 280, "weight": 15},
+            "DN150": {"outer": 285, "length": 360, "weight": 25},
+            "DN200": {"outer": 340, "length": 420, "weight": 38}
+        },
+        "蝶阀": {
+            "DN50":  {"outer": 165, "length": 43, "weight": 5},
+            "DN80":  {"outer": 200, "length": 46, "weight": 6},
+            "DN100": {"outer": 230, "length": 52, "weight": 8},
+            "DN150": {"outer": 285, "length": 60, "weight": 12},
+            "DN200": {"outer": 340, "length": 70, "weight": 18}
+        },
+        "止回阀": {
+            "DN50":  {"outer": 165, "length": 200, "weight": 9},
+            "DN80":  {"outer": 200, "length": 240, "weight": 11},
+            "DN100": {"outer": 220, "length": 280, "weight": 14},
+            "DN150": {"outer": 285, "length": 360, "weight": 23},
+            "DN200": {"outer": 340, "length": 420, "weight": 35}
+        }
+    }
+}

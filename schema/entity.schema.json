@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://your-domain.com/digital-twin-entity.schema.json",
+  "title": "六层数字孪生实体规范",
+  "description": "六层架构：R/L1/L2/L3/L4/CBM。所有层级均为开放式骨架，不预定义任何具体字段。",
+  "type": "object",
+  "properties": {
+    "r_layer": {
+      "type": "object",
+      "description": "R层：类别定义层（它是什么）",
+      "additionalProperties": true,
+      "properties": {
+        "category_code": {
+          "type": "string",
+          "description": "类别编码（任意字符串，由业务层自由定义）"
+        }
+      }
+    },
+    "l1_identity": {
+      "type": "object",
+      "description": "L1层：身份标识层（它是哪个）",
+      "additionalProperties": true,
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "description": "实例唯一标识"
+        }
+      }
+    },
+    "l2_static_attributes": {
+      "type": "object",
+      "description": "L2层：静态属性层（它有什么，含外形/锚点/受力点/接触面）",
+      "additionalProperties": true
+    },
+    "l3_dynamic_state": {
+      "type": "object",
+      "description": "L3层：动态状态层（它现在怎么样）",
+      "additionalProperties": true
+    },
+    "l4_event_chain": {
+      "type": "array",
+      "description": "L4层：事件链层（它经历过什么）",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "cbm_abilities": {
+      "type": "object",
+      "description": "CBM层：行为与认知模块（Cognition & Behavior Module）。它是实体的数字大脑，承载感知、决策与行动能力。",
+      "additionalProperties": true
+    }
+  },
+  "required": ["r_layer", "l1_identity"]
+}

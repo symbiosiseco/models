@@ -1,0 +1,30 @@
+{
+    "space_units": {
+        "unit_project": "3号楼",
+        "floor": "2层",
+        "room": "B轴",
+        "system": "消防给水系统"
+    },
+    "units": "mm",
+    "language": "zh-CN",
+    "timezone": "Asia/Shanghai",
+    "cbm_config": {
+        "force_check_interval": 60,
+        "contact_tolerance": 0,
+        "gasket_min_constraints": 5,
+        "pipe_standard_length": 6000,
+        "bolt_fit_tolerance": 0.5
+    },
+    "event_bus_config": {
+        "history_limit": 1000,
+        "cache_limit": 100,
+        "retry_count": 3,
+        "retry_interval": 1
+    },
+    "contact_tolerance": {
+        "flange": 0,
+        "groove": 0,
+        "gasket": 0,
+        "support": 0
+    }
+}

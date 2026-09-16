@@ -1,0 +1,28 @@
+# ============================================================
+# 六层架构演示系统 · 后端依赖
+# 受 GPL v3.0 保护
+# ============================================================
+
+# Web 框架
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# WebSocket
+Flask-SocketIO==5.3.6
+python-socketio==5.10.0
+python-engineio==4.8.0
+
+# 数据库
+SQLAlchemy==2.0.23
+
+# 数据校验
+pydantic==2.5.2
+
+# 日期处理
+python-dateutil==2.8.2
+
+# Excel 导出
+openpyxl==3.1.2
+
+# PDF 导出
+reportlab==4.0.7

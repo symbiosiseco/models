@@ -1,0 +1,12 @@
+{
+    "_source": "GB/T 9119 平面、突面板式平焊钢制管法兰",
+    "_pressure": "PN16",
+    "_unit": "mm",
+    "flanges": {
+        "DN50":  {"outer": 165, "thickness": 20, "bolts": 4,  "bolt_spec": "M16", "hole": 18},
+        "DN80":  {"outer": 200, "thickness": 22, "bolts": 4,  "bolt_spec": "M16", "hole": 18},
+        "DN100": {"outer": 220, "thickness": 24, "bolts": 8,  "bolt_spec": "M16", "hole": 18},
+        "DN150": {"outer": 285, "thickness": 26, "bolts": 8,  "bolt_spec": "M20", "hole": 22},
+        "DN200": {"outer": 340, "thickness": 30, "bolts": 12, "bolt_spec": "M20", "hole": 22}
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "_source": "GB/T 5782 六角头螺栓",
+    "_unit": {"diameter": "mm", "length": "mm", "torque": "N·m", "preload": "N"},
+    "bolts": {
+        "M10": {"diameter": 10, "length": 65,  "torque": 15, "preload": 10000, "tensile": 300},
+        "M12": {"diameter": 12, "length": 100, "torque": 20, "preload": 15000, "tensile": 400},
+        "M16": {"diameter": 16, "length": 80,  "torque": 40, "preload": 25000, "tensile": 500},
+        "M20": {"diameter": 20, "length": 100, "torque": 80, "preload": 40000, "tensile": 600}
+    }
+}

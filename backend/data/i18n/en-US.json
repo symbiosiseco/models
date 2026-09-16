@@ -1,0 +1,35 @@
+{
+    "app_name": "Six-Layer Architecture Demo System",
+    "entity_types": {
+        "阀门": "Valve",
+        "法兰": "Flange",
+        "螺栓": "Bolt",
+        "卡箍": "Clamp",
+        "支架": "Support",
+        "管道": "Pipe",
+        "垫片": "Gasket",
+        "套管": "Sleeve",
+        "风管": "Duct",
+        "桥架": "Tray"
+    },
+    "status": {
+        "待装配": "Pending Assembly",
+        "已装配": "Assembled",
+        "已安装": "Installed",
+        "已验收": "Accepted",
+        "整改中": "Rectifying"
+    },
+    "cbm_status": {
+        "stable": "Stable",
+        "warning": "Warning",
+        "overload": "Overload",
+        "collision": "Collision",
+        "unbuilt": "Unbuilt"
+    },
+    "errors": {
+        "assembly_failed": "Assembly failed: {reason}",
+        "contact_failed": "Contact check failed: {reason}",
+        "gasket_missing": "Gasket missing",
+        "pipe_not_segmented": "Pipes longer than 6m must be segmented"
+    }
+}

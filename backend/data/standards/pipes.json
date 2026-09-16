@@ -1,0 +1,11 @@
+{
+    "_source": "GB/T 3091 低压流体输送用焊接钢管",
+    "_unit": "mm",
+    "pipes": {
+        "DN50":  {"outer": 60.3,  "wall": 3.8, "weight": 5.3},
+        "DN80":  {"outer": 88.9,  "wall": 4.0, "weight": 8.4},
+        "DN100": {"outer": 114.3, "wall": 4.0, "weight": 10.9},
+        "DN150": {"outer": 168.3, "wall": 4.5, "weight": 18.2},
+        "DN200": {"outer": 219.1, "wall": 6.0, "weight": 31.5}
+    }
+}

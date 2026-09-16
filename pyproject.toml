@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "six-layer-core"
+version = "1.0.0"
+description = "A GPL-v3.0 licensed core shell for the Six-Layer architecture."
+readme = "README.md"
+authors = [{name = "陈锦松", email = "252590974@qq.com"}]
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://github.com/symbiosiseco/six-layer-core"
+Repository = "https://github.com/symbiosiseco/six-layer-core"

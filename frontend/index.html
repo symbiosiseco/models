@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>六层架构演示系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ==================== 顶部栏 ==================== -->
+<header class="top-bar">
+    <div class="logo">六层架构演示系统</div>
+    <div class="top-actions">
+        <button id="btnFullscreen" onclick="window.toggleFullscreen()">全屏画布</button>
+        <span id="wsStatus" class="ws-status">● 未连接</span>
+    </div>
+</header>
+
+<!-- ==================== 主布局 ==================== -->
+<div class="layout">
+
+    <!-- 左侧栏：参建单位 + 岗位 -->
+    <aside class="sidebar-left">
+        <div class="sidebar-section">
+            <h3>参建单位</h3>
+            <div id="orgList" class="org-list"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>岗位</h3>
+            <div id="roleList" class="role-list"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>操作</h3>
+            <div id="actionList" class="action-list"></div>
+        </div>
+    </aside>
+
+    <!-- 左侧拖动条 -->
+    <div class="splitter-v" id="splitterLeft"></div>
+
+    <!-- 中间主区 -->
+    <main class="main-area">
+        <!-- 场景信息 -->
+        <div class="scene-info">
+            <span id="sceneTitle">3号楼 2层 B轴 消防给水系统</span>
+            <span id="sceneStats"></span>
+        </div>
+
+        <!-- 3D 画布 -->
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="canvas3d"></canvas>
+            <div class="canvas-hint" id="canvasHint">点击构件查看六层 · 拖动旋转 · 滚轮缩放</div>
+        </div>
+
+        <!-- 水平拖动条 -->
+        <div class="splitter-h" id="splitterH"></div>
+
+        <!-- 操作按钮 -->
+        <div class="actions" id="actions">
+            <button onclick="window.refreshAll()">刷新数据</button>
+            <button onclick="window.toggleForcePoints()">受力点显示</button>
+            <button onclick="window.toggleCBMStatus()">CBM状态显示</button>
+        </div>
+
+        <!-- 5个 Tab 面板 -->
+        <div class="function-panel">
+            <div class="tabs" id="tabs">
+                <button class="tab active" data-tab="overview">概览</button>
+                <button class="tab" data-tab="cost">造价</button>
+                <button class="tab" data-tab="task">任务</button>
+                <button class="tab" data-tab="workflow">流程</button>
+                <button class="tab" data-tab="maintenance">运维</button>
+            </div>
+            <div class="tab-content" id="tabContent"></div>
+        </div>
+    </main>
+
+    <!-- 右侧拖动条 -->
+    <div class="splitter-v" id="splitterRight"></div>
+
+    <!-- 右侧栏：六层视图 -->
+    <aside class="sidebar-right">
+        <div class="sidebar-section">
+            <h3>实体六层</h3>
+            <div id="entityLayers" class="entity-layers">
+                <div class="empty-hint">点击构件查看六层</div>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <h3>受力点</h3>
+            <div id="forcePointsPanel" class="force-points-panel"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>CBM状态</h3>
+            <div id="cbmStatusPanel" class="cbm-status-panel"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>接触面</h3>
+            <div id="contactFacesPanel" class="contact-faces-panel"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>L4 履历</h3>
+            <div id="l4Panel" class="l4-panel"></div>
+        </div>
+    </aside>
+
+</div>
+
+<!-- ==================== 底部栏 ==================== -->
+<footer class="footer">
+    <span>六层架构演示系统 · GPL v3.0</span>
+    <span id="footerStats"></span>
+</footer>
+
+<!-- ==================== 事件流面板（浮动） ==================== -->
+<div class="event-stream" id="eventStream">
+    <div class="event-stream-header">
+        <span>⚡ 事件流</span>
+        <button onclick="document.getElementById('eventStream').classList.toggle('collapsed')">—</button>
+    </div>
+    <div class="event-stream-body" id="eventStreamBody"></div>
+</div>
+
+<!-- ==================== 脚本（顺序不可变） ==================== -->
+
+<!-- 1. 第三方库 -->
+<script src="js/lib/three.min.js"></script>
+<script src="js/lib/OrbitControls.js"></script>
+<script src="js/lib/socket.io.min.js"></script>
+
+<!-- 2. API 客户端 -->
+<script src="js/api/client.js"></script>
+
+<!-- 3. 渲染引擎 -->
+<script src="js/renderer/renderer3d.js"></script>
+<script src="js/renderer/animation.js"></script>
+
+<!-- 4. 工具 -->
+<script src="js/utils/datetime.js"></script>
+<script src="js/utils/math.js"></script>
+<script src="js/utils/storage.js"></script>
+<script src="js/utils/validator.js"></script>
+
+<!-- 5. UI 面板（按依赖顺序） -->
+<script src="js/ui/login.js"></script>
+<script src="js/ui/dashboard.js"></script>
+<script src="js/ui/role-selector.js"></script>
+<script src="js/ui/panel-worker.js"></script>
+<script src="js/ui/panel-cost.js"></script>
+<script src="js/ui/panel-owner.js"></script>
+<script src="js/ui/panel-maintenance.js"></script>
+<script src="js/ui/panel-designer.js"></script>
+<script src="js/ui/panel-supervisor.js"></script>
+<script src="js/ui/panel-regulator.js"></script>
+<script src="js/ui/panel-supplier.js"></script>
+<script src="js/ui/panel-logistics.js"></script>
+<script src="js/ui/panel-subcontractor.js"></script>
+<script src="js/ui/panel-factory.js"></script>
+<script src="js/ui/panel-inspector.js"></script>
+<script src="js/ui/report-viewer.js"></script>
+<script src="js/ui/template-editor.js"></script>
+<script src="js/ui/parameter-import.js"></script>
+<script src="js/ui/collision-viewer.js"></script>
+<script src="js/ui/task-board.js"></script>
+<script src="js/ui/measurement-input.js"></script>
+<script src="js/ui/change-manager.js"></script>
+<script src="js/ui/visa-manager.js"></script>
+<script src="js/ui/signature-panel.js"></script>
+<script src="js/ui/notification-center.js"></script>
+<script src="js/ui/search-bar.js"></script>
+<script src="js/ui/export-panel.js"></script>
+<script src="js/ui/force-point-viewer.js"></script>
+<script src="js/ui/cbm-status-panel.js"></script>
+<script src="js/ui/event-stream.js"></script>
+<script src="js/ui/l4-viewer.js"></script>
+
+<!-- 6. 主逻辑 -->
+<script src="js/test-main.js"></script>
+<script src="js/assembly-demo.js"></script>
+<script src="js/generator-panel.js"></script>
+<script src="js/template-panel.js"></script>
+<script src="js/more-menu.js"></script>
+
+</body>
+</html>
