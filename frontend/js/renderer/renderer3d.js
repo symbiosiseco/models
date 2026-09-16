@@ -9,7 +9,7 @@ class Renderer3D {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         if (!this.canvas) {
-            throw new Error(`画布不存在：${canvasId}`);
+            throw new Error('画布不存在：' + canvasId);
         }
 
         this.scene = new THREE.Scene();
@@ -39,8 +39,8 @@ class Renderer3D {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
 
-        this.entityMeshes = [];  // [{id, mesh, entity}]
-        this.forcePointMeshes = [];  // [{id, mesh, entityId}]
+        this.entityMeshes = [];
+        this.forcePointMeshes = [];
         this.cbmStatusMap = {};
         this.collisions = [];
         this.selectedId = null;
@@ -48,15 +48,12 @@ class Renderer3D {
         this.showForcePoints = true;
         this.showCBMStatus = true;
 
-        // 代理球配置
         this.proxyConfig = {
             maxDim: 0.3,
             radius: 0.1,
         };
 
-        // 图层显隐状态 { 类别名: true/false }
         this.categoryVisibility = {};
-        // 图例容器
         this.legendEl = null;
 
         this._setupLights();
@@ -67,8 +64,6 @@ class Renderer3D {
 
         this._animate();
     }
-
-    // ==================== 初始化 ====================
 
     _setupLights() {
         const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -114,22 +109,16 @@ class Renderer3D {
         this.canvas.addEventListener('mousemove', (e) => this._handleHover(e));
     }
 
-    // ==================== 图层开关（图例） ====================
-
     _setupLegend() {
-        // 动态插入样式
         this._injectLegendStyle();
 
-        // 找到 canvas 的父元素（canvas-wrapper）
         const wrapper = this.canvas.parentElement;
         if (!wrapper) return;
 
-        // 确保 wrapper 是相对定位
         if (getComputedStyle(wrapper).position === 'static') {
             wrapper.style.position = 'relative';
         }
 
-        // 创建图例容器
         const legend = document.createElement('div');
         legend.className = 'scene-legend';
         wrapper.appendChild(legend);
@@ -141,117 +130,32 @@ class Renderer3D {
 
         const style = document.createElement('style');
         style.id = 'scene-legend-style';
-        style.textContent = `
-            .scene-legend {
-                position: absolute;
-                left: 8px;
-                right: 8px;
-                bottom: 8px;
-                padding: 6px 10px;
-                background: rgba(0, 0, 0, 0.65);
-                border-radius: 6px;
-                color: #ddd;
-                font-size: 12px;
-                display: flex;
-                align-items: center;
-                flex-wrap: wrap;
-                gap: 6px;
-                z-index: 10;
-                pointer-events: auto;
-                backdrop-filter: blur(4px);
-                user-select: none;
-            }
-            .scene-legend .legend-title {
-                color: #999;
-                margin-right: 4px;
-                font-weight: 600;
-            }
-            .scene-legend .legend-items {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-                flex: 1;
-            }
-            .scene-legend .legend-item {
-                padding: 2px 8px;
-                border-radius: 3px;
-                cursor: pointer;
-                border: 1px solid transparent;
-                transition: all 0.15s;
-                font-size: 11px;
-            }
-            .scene-legend .legend-item.active {
-                background: rgba(82, 196, 26, 0.2);
-                border-color: #52c41a;
-                color: #7bd662;
-            }
-            .scene-legend .legend-item.inactive {
-                background: rgba(120, 120, 120, 0.15);
-                border-color: #555;
-                color: #777;
-                text-decoration: line-through;
-            }
-            .scene-legend .legend-item:hover {
-                border-color: #1677ff;
-            }
-            .scene-legend .legend-actions {
-                display: flex;
-                gap: 4px;
-                margin-left: 8px;
-            }
-            .scene-legend .legend-btn {
-                padding: 2px 8px;
-                background: #1677ff;
-                color: #fff;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                font-size: 11px;
-            }
-            .scene-legend .legend-btn:hover {
-                background: #4096ff;
-            }
-            .scene-legend .legend-btn.hide-all {
-                background: #ff4d4f;
-            }
-            .scene-legend .legend-btn.hide-all:hover {
-                background: #ff7875;
-            }
-        `;
+        style.textContent = '.scene-legend{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 10px;background:rgba(0,0,0,0.65);border-radius:6px;color:#ddd;font-size:12px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;z-index:10;pointer-events:auto;backdrop-filter:blur(4px);user-select:none;}.scene-legend .legend-title{color:#999;margin-right:4px;font-weight:600;}.scene-legend .legend-items{display:flex;flex-wrap:wrap;gap:4px;flex:1;}.scene-legend .legend-item{padding:2px 8px;border-radius:3px;cursor:pointer;border:1px solid transparent;transition:all 0.15s;font-size:11px;}.scene-legend .legend-item.active{background:rgba(82,196,26,0.2);border-color:#52c41a;color:#7bd662;}.scene-legend .legend-item.inactive{background:rgba(120,120,120,0.15);border-color:#555;color:#777;text-decoration:line-through;}.scene-legend .legend-item:hover{border-color:#1677ff;}.scene-legend .legend-actions{display:flex;gap:4px;margin-left:8px;}.scene-legend .legend-btn{padding:2px 8px;background:#1677ff;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;}.scene-legend .legend-btn:hover{background:#4096ff;}.scene-legend .legend-btn.hide-all{background:#ff4d4f;}.scene-legend .legend-btn.hide-all:hover{background:#ff7875;}';
         document.head.appendChild(style);
     }
 
     _updateLegend() {
         if (!this.legendEl) return;
 
-        // 收集所有出现过的实体类别
         const categories = new Set();
         for (const em of this.entityMeshes) {
             const t = em.entity && em.entity.entity_type;
             if (t) categories.add(t);
         }
 
-        // 定义显示顺序（重要的排前面）
-        const order = [
-            '管道', '给水管', '排水管', '消防管',
-            '支架', '综合支架', '吊架',
-            '阀门', '卡箍', '法兰', '垫片', '螺栓', '手轮', '阀杆', '套管',
-            '风管', '桥架',
-            '墙体', '楼板', '地面', '柱子', '吊顶',
-            '人员', '车辆', '组织', '图纸', '合同',
-        ];
-        const sorted = [...categories].sort((a, b) => {
+        const order = ['管道', '给水管', '排水管', '消防管', '支架', '综合支架', '吊架', '阀门', '卡箍', '法兰', '垫片', '螺栓', '手轮', '阀杆', '套管', '风管', '桥架', '墙体', '楼板', '地面', '柱子', '吊顶', '人员', '车辆', '组织', '图纸', '合同'];
+        const sorted = Array.from(categories).sort((a, b) => {
             const ia = order.indexOf(a);
             const ib = order.indexOf(b);
             return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
         });
 
-        // 生成 HTML
         let html = '<div class="legend-title">图层：</div>';
         html += '<div class="legend-items">';
         for (const cat of sorted) {
             const visible = this.categoryVisibility[cat] !== false;
-            html += `<span class="legend-item ${visible ? 'active' : 'inactive'}" data-category="${cat}">${cat}</span>`;
+            const cls = visible ? 'active' : 'inactive';
+            html += '<span class="legend-item ' + cls + '" data-category="' + cat + '">' + cat + '</span>';
         }
         html += '</div>';
         html += '<div class="legend-actions">';
@@ -261,34 +165,29 @@ class Renderer3D {
 
         this.legendEl.innerHTML = html;
 
-        // 绑定类别点击
+        const self = this;
         this.legendEl.querySelectorAll('.legend-item').forEach(el => {
             el.onclick = (e) => {
                 e.stopPropagation();
                 const cat = el.dataset.category;
-                const currentlyVisible = this.categoryVisibility[cat] !== false;
-                this.setCategoryVisible(cat, !currentlyVisible);
+                const currentlyVisible = self.categoryVisibility[cat] !== false;
+                self.setCategoryVisible(cat, !currentlyVisible);
             };
         });
 
-        // 绑定全部显示
         const showAllBtn = this.legendEl.querySelector('[data-action="show-all"]');
         if (showAllBtn) showAllBtn.onclick = (e) => {
             e.stopPropagation();
-            this.showAllCategories();
+            self.showAllCategories();
         };
 
-        // 绑定全部隐藏
         const hideAllBtn = this.legendEl.querySelector('[data-action="hide-all"]');
         if (hideAllBtn) hideAllBtn.onclick = (e) => {
             e.stopPropagation();
-            this.hideAllCategories();
+            self.hideAllCategories();
         };
     }
 
-    /**
-     * 设置某类别的显隐
-     */
     setCategoryVisible(category, visible) {
         this.categoryVisibility[category] = visible;
 
@@ -298,20 +197,9 @@ class Renderer3D {
             }
         }
 
-        // 如果隐藏的是当前选中实体，取消选中高亮
-        if (!visible && this.selectedId) {
-            const sel = this.entityMeshes.find(em => em.id === this.selectedId);
-            if (sel && sel.entity.entity_type === category) {
-                // 保持选中状态，但视觉上隐藏了
-            }
-        }
-
         this._updateLegend();
     }
 
-    /**
-     * 显示所有类别
-     */
     showAllCategories() {
         for (const em of this.entityMeshes) {
             if (em.entity && em.entity.entity_type) {
@@ -322,9 +210,6 @@ class Renderer3D {
         this._updateLegend();
     }
 
-    /**
-     * 隐藏所有类别
-     */
     hideAllCategories() {
         for (const em of this.entityMeshes) {
             if (em.entity && em.entity.entity_type) {
@@ -335,14 +220,9 @@ class Renderer3D {
         this._updateLegend();
     }
 
-    /**
-     * 获取某类别是否可见
-     */
     isCategoryVisible(category) {
         return this.categoryVisibility[category] !== false;
     }
-
-    // ==================== 鼠标交互 ====================
 
     _handleClick(e) {
         const rect = this.canvas.getBoundingClientRect();
@@ -359,7 +239,7 @@ class Renderer3D {
         for (const hit of hits) {
             let obj = hit.object;
             while (obj && !obj.userData.entityId) obj = obj.parent;
-            if (obj && obj.userData.entityId && !hitIds.includes(obj.userData.entityId)) {
+            if (obj && obj.userData.entityId && hitIds.indexOf(obj.userData.entityId) === -1) {
                 hitIds.push(obj.userData.entityId);
             }
         }
@@ -367,7 +247,7 @@ class Renderer3D {
         if (hitIds.length === 0) return;
 
         let targetId = hitIds[0];
-        if (this.selectedId && hitIds.includes(this.selectedId)) {
+        if (this.selectedId && hitIds.indexOf(this.selectedId) !== -1) {
             const currentIdx = hitIds.indexOf(this.selectedId);
             const nextIdx = (currentIdx + 1) % hitIds.length;
             targetId = hitIds[nextIdx];
@@ -424,8 +304,6 @@ class Renderer3D {
         this._updateHighlight();
     }
 
-    // ==================== 设置数据 ====================
-
     setEntities(entities) {
         this.entities = entities || [];
         this._rebuildScene();
@@ -445,8 +323,6 @@ class Renderer3D {
         this._rebuildScene();
     }
 
-    // ==================== 场景重建 ====================
-
     _rebuildScene() {
         for (const em of this.entityMeshes) {
             this.scene.remove(em.mesh);
@@ -458,7 +334,7 @@ class Renderer3D {
             if (!mesh) continue;
             mesh.userData.entityId = e.id;
             this.scene.add(mesh);
-            this.entityMeshes.push({ id: e.id, mesh, entity: e });
+            this.entityMeshes.push({ id: e.id, mesh: mesh, entity: e });
         }
 
         this._rebuildForcePoints();
@@ -477,7 +353,8 @@ class Renderer3D {
     }
 
     _addPickProxies() {
-        const { maxDim, radius } = this.proxyConfig;
+        const maxDim = this.proxyConfig.maxDim;
+        const radius = this.proxyConfig.radius;
 
         for (const em of this.entityMeshes) {
             try {
@@ -531,8 +408,6 @@ class Renderer3D {
         }
     }
 
-    // ==================== 实体构建 ====================
-
     _buildEntity(e) {
         const type = e.entity_type || '';
         try {
@@ -555,7 +430,7 @@ class Renderer3D {
                 default: return this._buildDefault(e);
             }
         } catch (err) {
-            console.warn(`构建实体失败：${type}`, err);
+            console.warn('构建实体失败：' + type, err);
             return this._buildDefault(e);
         }
     }
@@ -638,6 +513,18 @@ class Renderer3D {
         const base = new THREE.Mesh(baseGeo, poleMat);
         base.position.y = -0.3;
         group.add(base);
+
+        // ★ A-1 新增：底板上 2 个膨胀螺栓孔（红色小球）
+        const anchorMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
+        const anchorGeo = new THREE.SphereGeometry(0.012, 8, 8);
+
+        const anchor1 = new THREE.Mesh(anchorGeo, anchorMat);
+        anchor1.position.set(-0.03, -0.30, 0);
+        group.add(anchor1);
+
+        const anchor2 = new THREE.Mesh(anchorGeo, anchorMat);
+        anchor2.position.set(0.03, -0.30, 0);
+        group.add(anchor2);
 
         group.position.copy(this._toThree(pos.x, pos.y, pos.z));
         return group;
@@ -812,20 +699,15 @@ class Renderer3D {
 
     _buildCeiling(e) {
         const l2 = e.layer.l2_static_attributes || {};
-        const len = this._parseMM(l2['长度'] || 10000) / 1000;   // 10m
-        const w = this._parseMM(l2['宽度'] || 3000) / 1000;     // 3m
+        const len = this._parseMM(l2['长度'] || 10000) / 1000;
+        const w = this._parseMM(l2['宽度'] || 3000) / 1000;
         const pos = this._getPosition(e);
 
         const group = new THREE.Group();
 
-        // ==================== 材质定义 ====================
-        // 主龙骨：浅银灰
         const mainKeelMat = new THREE.MeshPhongMaterial({ color: 0xc8c8c8 });
-        // 副龙骨：稍深灰
         const subKeelMat = new THREE.MeshPhongMaterial({ color: 0xb0b0b0 });
-        // 吊杆：深灰
         const hangerMat = new THREE.MeshPhongMaterial({ color: 0x8c8c8c });
-        // 石膏板：米白半透明
         const boardMat = new THREE.MeshPhongMaterial({
             color: 0xf0ead6,
             transparent: true,
@@ -833,9 +715,8 @@ class Renderer3D {
             side: THREE.DoubleSide,
         });
 
-        // ==================== 1. 主龙骨（C38，3 根，沿 X 方向） ====================
-        const mainKeelSpacing = 1.2;      // 主龙骨间距 1.2m
-        const mainKeelCount = 3;          // 3 根
+        const mainKeelSpacing = 1.2;
+        const mainKeelCount = 3;
         const mainKeelGeo = new THREE.BoxGeometry(len, 0.012, 0.038);
 
         for (let i = 0; i < mainKeelCount; i++) {
@@ -845,37 +726,32 @@ class Renderer3D {
             group.add(mainKeel);
         }
 
-        // ==================== 2. 副龙骨（C50，间距 0.4m，沿 Z 方向） ====================
-        const subKeelSpacing = 0.4;       // 副龙骨间距 0.4m
+        const subKeelSpacing = 0.4;
         const subKeelCount = Math.floor(len / subKeelSpacing) + 1;
         const subKeelGeo = new THREE.BoxGeometry(0.05, 0.012, w);
 
         for (let i = 0; i < subKeelCount; i++) {
             const x = -len / 2 + i * subKeelSpacing;
             const subKeel = new THREE.Mesh(subKeelGeo, subKeelMat);
-            subKeel.position.set(x, -0.012, 0);   // 主龙骨下方
+            subKeel.position.set(x, -0.012, 0);
             group.add(subKeel);
         }
 
-        // ==================== 3. 吊杆（Φ8，9 根） ====================
         const hangerGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.3, 6);
-        const hangerXPositions = [-4, 0, 4];      // 沿主龙骨每根 3 个吊点
-        const hangerZPositions = [-1.2, 0, 1.2];  // 主龙骨位置
+        const hangerXPositions = [-4, 0, 4];
+        const hangerZPositions = [-1.2, 0, 1.2];
 
         for (const x of hangerXPositions) {
             for (const z of hangerZPositions) {
-                // 吊杆本体
                 const hanger = new THREE.Mesh(hangerGeo, hangerMat);
                 hanger.position.set(x, 0.15, z);
                 group.add(hanger);
 
-                // 吊杆顶部挂件（在楼板底）
                 const hookGeo = new THREE.SphereGeometry(0.015, 8, 8);
                 const hook = new THREE.Mesh(hookGeo, hangerMat);
                 hook.position.set(x, 0.3, z);
                 group.add(hook);
 
-                // 主龙骨吊件（吊杆与主龙骨连接处）
                 const clipGeo = new THREE.BoxGeometry(0.05, 0.03, 0.05);
                 const clip = new THREE.Mesh(clipGeo, hangerMat);
                 clip.position.set(x, 0.015, z);
@@ -883,18 +759,15 @@ class Renderer3D {
             }
         }
 
-        // ==================== 4. 石膏板 ====================
         const boardGeo = new THREE.PlaneGeometry(len, w);
         const board = new THREE.Mesh(boardGeo, boardMat);
         board.rotation.x = Math.PI / 2;
-        board.position.set(0, -0.024, 0);   // 副龙骨下方
+        board.position.set(0, -0.024, 0);
         group.add(board);
 
-        // ==================== 5. 边龙骨（四周） ====================
         const edgeKeelHeight = 0.025;
         const edgeKeelThickness = 0.02;
 
-        // 前后两条（沿 X 方向）
         const edgeFrontBackGeo = new THREE.BoxGeometry(len, edgeKeelHeight, edgeKeelThickness);
         for (const z of [-w / 2, w / 2]) {
             const edge = new THREE.Mesh(edgeFrontBackGeo, mainKeelMat);
@@ -902,7 +775,6 @@ class Renderer3D {
             group.add(edge);
         }
 
-        // 左右两条（沿 Z 方向）
         const edgeLeftRightGeo = new THREE.BoxGeometry(edgeKeelThickness, edgeKeelHeight, w);
         for (const x of [-len / 2, len / 2]) {
             const edge = new THREE.Mesh(edgeLeftRightGeo, mainKeelMat);
@@ -923,8 +795,6 @@ class Renderer3D {
         return mesh;
     }
 
-    // ==================== 受力点可视化 ====================
-
     _buildForcePoint(fp, parentPos) {
         const group = new THREE.Group();
         const rel = fp['位置'] || { x: 0, y: 0, z: 0 };
@@ -938,7 +808,7 @@ class Renderer3D {
 
         const sphereGeo = new THREE.SphereGeometry(0.05, 12, 12);
         const color = this._getForceColor(fp['受力状态'] || '稳定');
-        const sphereMat = new THREE.MeshBasicMaterial({ color });
+        const sphereMat = new THREE.MeshBasicMaterial({ color: color });
         const sphere = new THREE.Mesh(sphereGeo, sphereMat);
         sphere.position.copy(pos);
         group.add(sphere);
@@ -996,8 +866,6 @@ class Renderer3D {
         }
     }
 
-    // ==================== CBM 状态颜色 ====================
-
     _getCBMColor(entity) {
         const status = this.cbmStatusMap[entity.id] || 'stable';
         switch (status) {
@@ -1022,8 +890,6 @@ class Renderer3D {
         return l3['状态'] === '已安装' || l3['状态'] === '已验收';
     }
 
-    // ==================== 坐标映射 ====================
-
     _toThree(x, y, z) {
         return new THREE.Vector3(x / 1000, z / 1000, y / 1000);
     }
@@ -1042,32 +908,36 @@ class Renderer3D {
         return l3['绝对坐标'] || { x: 0, y: 0, z: 0 };
     }
 
-    // ==================== 视图控制 ====================
-
     zoomIn() {
         this.camera.position.multiplyScalar(0.9);
     }
+
     zoomOut() {
         this.camera.position.multiplyScalar(1.1);
     }
+
     resetView() {
         this.camera.position.set(8, 6, 12);
         this.controls.target.set(5, 2.5, 0);
         this.controls.update();
     }
+
     fitView() {
         this.resetView();
     }
+
     sideView() {
         this.camera.position.set(0, 5, 20);
         this.controls.target.set(5, 2.5, 0);
         this.controls.update();
     }
+
     topView() {
         this.camera.position.set(5, 20, 0.1);
         this.controls.target.set(5, 0, 0);
         this.controls.update();
     }
+
     frontView() {
         this.camera.position.set(5, 5, 20);
         this.controls.target.set(5, 2.5, 0);
@@ -1083,8 +953,6 @@ class Renderer3D {
         this.showCBMStatus = !this.showCBMStatus;
         this._rebuildScene();
     }
-
-    // ==================== 渲染循环 ====================
 
     _animate() {
         requestAnimationFrame(() => this._animate());

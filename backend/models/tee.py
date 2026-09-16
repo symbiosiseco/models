@@ -4,24 +4,43 @@
 受 GPL v3.0 保护
 
 连接三个方向的管道。含受力点+接触面。
+
+V2.0（阶段1）：TEE_SPECS 从 pipes.json 推算（三通外径 = 主管外径）。
 """
 
 from typing import Dict, Any, Optional
 from .entity import BaseEntity
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON推算三通规格 ====================
+
+_DEFAULT_TEE_SPECS = {
+    'DN50':  {'outer': 60.3,  'length': 120},
+    'DN80':  {'outer': 88.9,  'length': 160},
+    'DN100': {'outer': 114.3, 'length': 200},
+    'DN150': {'outer': 168.3, 'length': 280},
+    'DN200': {'outer': 219.1, 'length': 360},
+}
+
+
+def _load_tee_specs() -> Dict[str, Dict[str, float]]:
+    """从 pipes.json 加载对应管道外径，三通中心长度按 1.75D 计算。"""
+    specs = {}
+    for dn, default in _DEFAULT_TEE_SPECS.items():
+        pipe_spec = read_standard('pipes', dn)
+        outer = pipe_spec.get('外径', default['outer'])
+        length = round(outer * 1.75, 1)
+        specs[dn] = {'outer': outer, 'length': length}
+    return specs
 
 
 class TeeEntity(BaseEntity):
     """三通实体"""
 
-    # 三通规格
-    TEE_SPECS = {
-        'DN50':  {'outer': 60.3,  'length': 120},
-        'DN80':  {'outer': 88.9,  'length': 160},
-        'DN100': {'outer': 114.3, 'length': 200},
-        'DN150': {'outer': 168.3, 'length': 280},
-        'DN200': {'outer': 219.1, 'length': 360},
-    }
+    # ★ V2.0：从 pipes.json 推算
+    TEE_SPECS = _load_tee_specs()
 
     def __init__(self, dn: str = 'DN100', branch_dn: str = 'DN80',
                  material: str = '镀锌铸铁', position: Optional[Dict] = None,
@@ -34,7 +53,6 @@ class TeeEntity(BaseEntity):
 
         position = position or {'x': 6000, 'y': -150, 'z': 2500}
 
-        # 受力点：三通中心
         force_points = [
             {
                 'id': 'fp_center',
@@ -46,7 +64,6 @@ class TeeEntity(BaseEntity):
             }
         ]
 
-        # 接触面：三个端口沟槽（各1个）
         contact_faces = [
             {
                 'id': 'cf_groove_main_in',
@@ -83,7 +100,6 @@ class TeeEntity(BaseEntity):
             },
         ]
 
-        # L2层
         l2 = {
             '主管规格': dn,
             '支管规格': branch_dn,
@@ -95,7 +111,6 @@ class TeeEntity(BaseEntity):
             '包围盒': {'x': spec['length'], 'y': spec['length'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '三个端口坐标': {
@@ -106,7 +121,6 @@ class TeeEntity(BaseEntity):
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = {
             '物理规则': {
                 '包围盒': {'x': spec['length'], 'y': spec['length'], 'z': spec['outer']},
@@ -147,27 +161,21 @@ class TeeEntity(BaseEntity):
         self.system = system
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = f'{dn}/{branch_dn}'
 
     def get_branch_angle(self) -> float:
-        """获取支管角度"""
         return 90.0
 
     def get_three_end_positions(self) -> Dict[str, Any]:
-        """获取三个端口坐标"""
         return self.layer['l3_dynamic_state']['三个端口坐标']
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '三通',

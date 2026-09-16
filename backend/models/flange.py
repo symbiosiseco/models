@@ -5,31 +5,51 @@
 
 独立成品，用于阀门/管道连接。含受力点+接触面。
 DN100法兰孔径18mm（装配检查关键）。
+
+V2.0（阶段1）：FLANGE_SPECS 从 flanges.json 读，消除硬编码。
 """
 
 import math
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import flange_cbm, flange_force_points, flange_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载法兰规格 ====================
+
+_DEFAULT_FLANGE_SPECS = {
+    'DN50':  {'outer': 165, 'thickness': 20, 'bolts': 4,  'bolt_spec': 'M16', 'hole': 18},
+    'DN80':  {'outer': 200, 'thickness': 22, 'bolts': 4,  'bolt_spec': 'M16', 'hole': 18},
+    'DN100': {'outer': 220, 'thickness': 24, 'bolts': 8,  'bolt_spec': 'M16', 'hole': 18},
+    'DN150': {'outer': 285, 'thickness': 26, 'bolts': 8,  'bolt_spec': 'M20', 'hole': 22},
+    'DN200': {'outer': 340, 'thickness': 30, 'bolts': 12, 'bolt_spec': 'M20', 'hole': 22},
+}
+
+
+def _load_flange_specs() -> Dict[str, Dict[str, Any]]:
+    """从 flanges.json 加载法兰规格。JSON没有的用默认值。"""
+    specs = {}
+    for dn, default in _DEFAULT_FLANGE_SPECS.items():
+        s = read_standard('flanges', dn)
+        specs[dn] = {
+            'outer': s.get('外径', default['outer']),
+            'thickness': s.get('厚度', default['thickness']),
+            'bolts': s.get('螺栓孔数', default['bolts']),
+            'bolt_spec': s.get('螺栓规格', default['bolt_spec']),
+            'hole': s.get('螺栓孔径', default['hole']),
+        }
+    return specs
 
 
 class FlangeEntity(BaseEntity):
     """法兰实体"""
 
-    # 法兰国标尺寸（GB/T 9119 PN16）
-    FLANGE_SPECS = {
-        'DN50':  {'outer': 165, 'thickness': 20, 'bolts': 4,  'bolt_spec': 'M16', 'hole': 18},
-        'DN80':  {'outer': 200, 'thickness': 22, 'bolts': 4,  'bolt_spec': 'M16', 'hole': 18},
-        'DN100': {'outer': 220, 'thickness': 24, 'bolts': 8,  'bolt_spec': 'M16', 'hole': 18},
-        'DN150': {'outer': 285, 'thickness': 26, 'bolts': 8,  'bolt_spec': 'M20', 'hole': 22},
-        'DN200': {'outer': 340, 'thickness': 30, 'bolts': 12, 'bolt_spec': 'M20', 'hole': 22},
-    }
+    # ★ V2.0：从 JSON 加载
+    FLANGE_SPECS = _load_flange_specs()
 
-    # 法兰类型
     FLANGE_TYPES = ['沟槽法兰', '平焊法兰', '对焊法兰']
-
-    # 压力等级
     PRESSURE_LEVELS = ['PN10', 'PN16', 'PN25']
 
     def __init__(self, dn: str = 'DN100', flange_type: str = '沟槽法兰',
@@ -47,13 +67,9 @@ class FlangeEntity(BaseEntity):
 
         position = position or {'x': 4000, 'y': -150, 'z': 2500}
 
-        # 受力点
         force_points = flange_force_points(dn, spec['outer'], spec['thickness'])
-
-        # 接触面
         contact_faces = flange_contact_faces(dn, spec['outer'], spec['thickness'])
 
-        # L2层
         l2 = {
             '类型': flange_type,
             '规格': dn,
@@ -71,15 +87,12 @@ class FlangeEntity(BaseEntity):
             '包围盒': {'x': spec['thickness'], 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = flange_cbm(dn, spec['outer'], spec['thickness'])
-        # 增加孔径信息到CBM（装配检查用）
         cbm['装配规则']['孔径'] = spec['hole']
         cbm['装配规则']['螺栓数量'] = spec['bolts']
         cbm['装配规则']['螺栓规格'] = spec['bolt_spec']
@@ -100,26 +113,16 @@ class FlangeEntity(BaseEntity):
         self.space = space or config.SPACE_UNITS
         self.bolt_hole_diameter = spec['hole']
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
         self.layer['r_layer']['子类型'] = flange_type
         self.layer['r_layer']['压力等级'] = pressure
         self.layer['r_layer']['系统'] = system
 
-    # ==================== 螺栓孔 ====================
-
     def get_bolt_holes(self) -> List[Dict[str, Any]]:
-        """
-        获取螺栓孔位置。
-
-        DN100 → 8个孔
-        DN150 → 8个孔
-        DN200 → 12个孔
-        """
+        """获取螺栓孔位置。"""
         spec = self.FLANGE_SPECS[self.dn]
         count = spec['bolts']
         hole_d = spec['hole']
-        # 分布圆直径 = 外径 × 0.85
         pcd = spec['outer'] * 0.85
 
         holes = []
@@ -139,13 +142,7 @@ class FlangeEntity(BaseEntity):
         return holes
 
     def check_bolt_fit(self, bolt_spec: str) -> Dict[str, Any]:
-        """
-        检查螺栓能否穿过法兰孔。
-
-        规则：螺栓直径 + 公差（0.5mm） ≤ 孔径
-        - M16 + 0.5 = 16.5 ≤ 18 ✅
-        - M20 + 0.5 = 20.5 > 18 ❌
-        """
+        """检查螺栓能否穿过法兰孔。"""
         try:
             diameter = float(bolt_spec.replace('M', ''))
         except ValueError:
@@ -168,18 +165,13 @@ class FlangeEntity(BaseEntity):
             ),
         }
 
-    # ==================== 受力点/接触面 ====================
-
     def get_force_points(self) -> List[Dict[str, Any]]:
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '法兰',

@@ -4,33 +4,51 @@
 受 GPL v3.0 保护
 
 连接两段不同方向的管道。含受力点+接触面。
+
+V2.0（阶段1）：ELBOW_SPECS 从 pipes.json 推算（弯头外径 = 管道外径）。
 """
 
 import math
 from typing import Dict, Any, Optional
 from .entity import BaseEntity
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON推算弯头规格 ====================
+
+_DEFAULT_ELBOW_SPECS = {
+    'DN50':  {'outer': 60.3,  'length': 100},
+    'DN80':  {'outer': 88.9,  'length': 140},
+    'DN100': {'outer': 114.3, 'length': 180},
+    'DN150': {'outer': 168.3, 'length': 260},
+    'DN200': {'outer': 219.1, 'length': 340},
+}
+
+
+def _load_elbow_specs() -> Dict[str, Dict[str, float]]:
+    """从 pipes.json 加载对应管道外径，弯头长度按 1.5D 计算。"""
+    specs = {}
+    for dn, default in _DEFAULT_ELBOW_SPECS.items():
+        pipe_spec = read_standard('pipes', dn)
+        outer = pipe_spec.get('外径', default['outer'])
+        # 弯头中心长度 ≈ 1.5 × 外径
+        length = round(outer * 1.5, 1)
+        specs[dn] = {'outer': outer, 'length': length}
+    return specs
 
 
 class ElbowEntity(BaseEntity):
     """弯头实体"""
 
-    # 弯头规格
-    ELBOW_SPECS = {
-        'DN50':  {'outer': 60.3,  'length': 100},
-        'DN80':  {'outer': 88.9,  'length': 140},
-        'DN100': {'outer': 114.3, 'length': 180},
-        'DN150': {'outer': 168.3, 'length': 260},
-        'DN200': {'outer': 219.1, 'length': 340},
-    }
+    # ★ V2.0：从 pipes.json 推算
+    ELBOW_SPECS = _load_elbow_specs()
 
-    # 允许角度
     ALLOWED_ANGLES = [45, 90]
 
     def __init__(self, dn: str = 'DN100', angle: int = 90, radius: str = '1.5D',
                  material: str = '镀锌铸铁', position: Optional[Dict] = None,
                  system: str = '消防给水系统', space: Optional[Dict] = None):
-        # 参数校验
         if dn not in self.ELBOW_SPECS:
             dn = 'DN100'
         if angle not in self.ALLOWED_ANGLES:
@@ -39,7 +57,6 @@ class ElbowEntity(BaseEntity):
 
         position = position or {'x': 8000, 'y': -150, 'z': 2500}
 
-        # 受力点：弯头中心
         force_points = [
             {
                 'id': 'fp_center',
@@ -51,7 +68,6 @@ class ElbowEntity(BaseEntity):
             }
         ]
 
-        # 接触面：两端沟槽
         contact_faces = [
             {
                 'id': 'cf_groove_start',
@@ -77,7 +93,6 @@ class ElbowEntity(BaseEntity):
             },
         ]
 
-        # L2层
         l2 = {
             '规格': dn,
             '角度': f'{angle}°',
@@ -90,7 +105,6 @@ class ElbowEntity(BaseEntity):
             '包围盒': {'x': spec['length'], 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '旋转角度': 0,
@@ -99,7 +113,6 @@ class ElbowEntity(BaseEntity):
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = {
             '物理规则': {
                 '包围盒': {'x': spec['length'], 'y': spec['outer'], 'z': spec['outer']},
@@ -142,45 +155,34 @@ class ElbowEntity(BaseEntity):
         self.system = system
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
         self.layer['r_layer']['角度'] = f'{angle}°'
 
     def calc_arc_length(self) -> float:
-        """
-        计算弯曲弧长 = π × R × angle / 180
-
-        R = 1.5D 或 1.0D × 管径
-        """
+        """计算弯曲弧长 = π × R × angle / 180"""
         spec = self.ELBOW_SPECS[self.dn]
-        # 弯曲半径
         if self.radius == '1.0D':
             R = spec['outer']
         elif self.radius == '1.5D':
             R = spec['outer'] * 1.5
         else:
             R = spec['outer'] * 1.5
-        # 弧长
         arc = math.pi * R * self.angle / 180
         return round(arc, 2)
 
     def get_end_positions(self) -> Dict[str, Any]:
-        """获取两端坐标"""
         return {
             'start': self.layer['l3_dynamic_state']['起始端坐标'],
             'end': self.layer['l3_dynamic_state']['终止端坐标'],
         }
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '弯头',

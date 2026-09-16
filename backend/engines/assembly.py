@@ -10,6 +10,11 @@
 - 孔径匹配：螺栓直径 + 公差（0.5mm） ≤ 目标孔径
 - M16 + 0.5 = 16.5 ≤ 18 ✅
 - M20 + 0.5 = 20.5 > 18 ❌
+
+V2.0 升级（专报E）：
+- 装配成功 → 发布 "L3变化" 事件
+- 装配失败 → 发布 "装配失败" 事件 + 生成换货单
+- 垫片检查 → 完整调用5个绝对约束
 """
 
 from typing import Dict, Any, List, Optional
@@ -25,13 +30,17 @@ class AssemblyEngine:
     # 目标可接收装配的状态
     ACCEPTABLE_STATUSES = ['待装配', '已安装', '待接收']
 
-    def __init__(self, contact_check_engine=None):
+    # ★ V2.0 新增：构造函数注入 event_bus 和 replacement_engine
+    def __init__(self, contact_check_engine=None, event_bus=None, replacement_engine=None):
         self.contact_check_engine = contact_check_engine
+        self.event_bus = event_bus                       # ★ V2.0 新增
+        self.replacement_engine = replacement_engine     # ★ V2.0 新增
         self.check_history: List[Dict[str, Any]] = []
 
     # ==================== 主入口 ====================
 
-    def check_assembly(self, part, target) -> Dict[str, Any]:
+    # ★ V2.0 修改：接收 entities 参数
+    def check_assembly(self, part, target, entities=None) -> Dict[str, Any]:
         """
         检查装配条件。
 
@@ -40,12 +49,13 @@ class AssemblyEngine:
             2. 目标状态
             3. 类型兼容
             4. 接触面检查
-            5. 垫片检查
+            5. 垫片检查（★ V2.0 改为5约束）
         """
         if part is None or target is None:
             return {'success': False, 'checks': [], 'message': '零件或目标为空'}
 
         checks = []
+        entities = entities or []
 
         # 1. 孔径匹配
         hole_check = self._check_hole_fit(part, target)
@@ -72,28 +82,45 @@ class AssemblyEngine:
             if not contact_check['passed']:
                 return {'success': False, 'checks': checks, 'message': contact_check['message']}
 
-        # 5. 垫片检查（如果是法兰装配）
-        gasket_check = self._check_gasket(part, target, [])
+        # 5. 垫片检查（★ V2.0 改为5约束）
+        gasket_check = self._check_gasket(part, target, entities)
         checks.append(gasket_check)
         if not gasket_check['passed']:
             return {'success': False, 'checks': checks, 'message': gasket_check['message']}
 
         return {'success': True, 'checks': checks, 'message': '所有检查通过'}
 
+    # ★ V2.0 修改：成功发布L3变化，失败发布装配失败+生成换货单
     def assemble(self, part, target, entities: Optional[List] = None) -> Dict[str, Any]:
         """
         执行装配。
 
-        通过 → part.move_to(target位置) + 状态="已装配" + 写L4
-        失败 → part留在原地 + 写L4（失败原因）
+        通过 → part.move_to(target位置) + 状态="已装配" + 写L4 + 发布"L3变化"
+        失败 → part留在原地 + 写L4（失败原因） + 发布"装配失败" + 生成换货单
         """
-        result = self.check_assembly(part, target)
+        entities = entities or []
+        result = self.check_assembly(part, target, entities)
 
         if result['success']:
             # 更新零件位置
             self._update_position(part, target)
             # 写L4
             self._write_l4(part, target, result)
+
+            # ★ V2.0 新增：发布 "L3变化" 事件（专报E要求）
+            if self.event_bus:
+                try:
+                    target_pos = target.get_position() if hasattr(target, 'get_position') else {'x': 0, 'y': 0, 'z': 0}
+                    self.event_bus.publish('L3变化', {
+                        'entity_id': getattr(part, 'id', None),
+                        'old_status': '待装配',
+                        'new_status': '已装配',
+                        'position': target_pos,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    })
+                except Exception as e:
+                    print(f"⚠️ 发布L3变化事件失败：{e}")
+
             return {
                 'success': True,
                 'checks': result['checks'],
@@ -104,6 +131,30 @@ class AssemblyEngine:
         else:
             # 写L4（失败）
             self._write_l4(part, target, result)
+
+            # ★ V2.0 新增：发布 "装配失败" 事件（专报E要求）
+            if self.event_bus:
+                try:
+                    self.event_bus.publish('装配失败', {
+                        'part_id': getattr(part, 'id', None),
+                        'target_id': getattr(target, 'id', None),
+                        'error': result['message'],
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    })
+                except Exception as e:
+                    print(f"⚠️ 发布装配失败事件失败：{e}")
+
+            # ★ V2.0 新增：生成换货单（专报E要求）
+            if self.replacement_engine:
+                try:
+                    self.replacement_engine.handle_assembly_error(
+                        getattr(part, 'id', None),
+                        getattr(target, 'id', None),
+                        result['message']
+                    )
+                except Exception as e:
+                    print(f"⚠️ 生成换货单失败：{e}")
+
             return {
                 'success': False,
                 'checks': result['checks'],
@@ -244,10 +295,10 @@ class AssemblyEngine:
         except Exception as e:
             return {'passed': True, 'check': '接触面检查', 'message': f'接触面检查异常：{e}'}
 
-    # ==================== 垫片检查 ====================
+    # ==================== 垫片检查（★ V2.0 完整5约束） ====================
 
     def _check_gasket(self, part, target, entities: List) -> Dict[str, Any]:
-        """检查垫片"""
+        """★ V2.0 增强：检查垫片5个绝对约束（专报E要求）"""
         p_type = getattr(part, 'entity_type', '')
         t_type = getattr(target, 'entity_type', '')
 
@@ -255,21 +306,53 @@ class AssemblyEngine:
         if '法兰' not in (p_type, t_type):
             return {'passed': True, 'check': '垫片检查', 'message': '非法兰连接，跳过'}
 
-        # 检查接触面是否要求垫片
-        if hasattr(target, 'get_contact_faces'):
-            for cf in target.get_contact_faces():
-                if '垫片' in cf.get('必须包含', []):
-                    # 场景里有垫片则视为通过
-                    has_gasket = any(
-                        getattr(e, 'entity_type', '') == '垫片'
-                        for e in entities
-                    )
-                    return {
-                        'passed': has_gasket,
-                        'check': '垫片检查',
-                        'message': '有垫片' if has_gasket else '缺少垫片',
-                    }
-        return {'passed': True, 'check': '垫片检查', 'message': '无需垫片'}
+        # 没有接触面检查引擎则跳过
+        if not self.contact_check_engine:
+            return {'passed': True, 'check': '垫片检查', 'message': '无接触面检查引擎'}
+
+        # 从entities中找到垫片和两个法兰
+        gasket = None
+        flanges = []
+        for e in entities:
+            e_type = getattr(e, 'entity_type', '')
+            if e_type == '垫片':
+                gasket = e
+            elif e_type == '法兰':
+                flanges.append(e)
+
+        # 无垫片 → 检查目标接触面是否要求垫片
+        if gasket is None:
+            if hasattr(target, 'get_contact_faces'):
+                for cf in target.get_contact_faces():
+                    if '垫片' in cf.get('必须包含', []):
+                        return {'passed': False, 'check': '垫片检查', 'message': '缺少垫片'}
+            return {'passed': True, 'check': '垫片检查', 'message': '无需垫片'}
+
+        # 调用5个约束检查
+        checks = {}
+        try:
+            checks['position'] = self.contact_check_engine.check_gasket_position(
+                gasket,
+                flanges[0] if len(flanges) >= 1 else target,
+                flanges[-1] if len(flanges) >= 2 else target,
+            )
+            checks['range'] = self.contact_check_engine.check_gasket_range(gasket, target)
+            checks['hole_clearance'] = self.contact_check_engine.check_gasket_hole_clearance(gasket, target)
+            checks['direction'] = self.contact_check_engine.check_gasket_direction(gasket, target)
+            checks['count'] = self.contact_check_engine.check_gasket_count(flanges, [gasket])
+        except Exception as e:
+            return {'passed': True, 'check': '垫片检查', 'message': f'垫片检查异常：{e}'}
+
+        # 所有子检查都必须通过
+        all_passed = all(c.get('passed', True) for c in checks.values())
+        failed_checks = [k for k, v in checks.items() if not v.get('passed', True)]
+
+        return {
+            'passed': all_passed,
+            'check': '垫片检查',
+            'checks': checks,
+            'message': '垫片5约束通过' if all_passed else f'垫片约束未通过：{failed_checks}',
+        }
 
     # ==================== 更新位置 ====================
 

@@ -5,30 +5,59 @@
 
 含受力点+接触面。
 套管是穿过墙体的管道保护件。
+
+V2.0（阶段1）：SLEEVE_SPECS 从 pipes.json 推算（套管外径 = 对应管道外径 × 1.2）。
 """
 
 from typing import Dict, Any, Optional
 from .entity import BaseEntity
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON推算套管规格 ====================
+
+# 套管规格 → 对应管道 DN
+_SLEEVE_TO_PIPE = {
+    'DN100': 'DN80',
+    'DN150': 'DN100',
+    'DN200': 'DN150',
+}
+
+_DEFAULT_SLEEVE_SPECS = {
+    'DN100': {'outer': 114.3, 'wall': 4.0, 'applicable_pipe': 'DN80'},
+    'DN150': {'outer': 168.3, 'wall': 4.5, 'applicable_pipe': 'DN100'},
+    'DN200': {'outer': 219.1, 'wall': 6.0, 'applicable_pipe': 'DN150'},
+}
+
+
+def _load_sleeve_specs() -> Dict[str, Dict[str, Any]]:
+    """套管规格：外径从 pipes.json 对应管道读，加套管壁厚与间隙。"""
+    specs = {}
+    for sleeve_dn, default in _DEFAULT_SLEEVE_SPECS.items():
+        pipe_dn = _SLEEVE_TO_PIPE[sleeve_dn]
+        pipe_spec = read_standard('pipes', pipe_dn)
+        # 套管外径 = 管道外径 + 2×(壁厚+间隙) = 管道外径 × 1.2（简化）
+        pipe_outer = pipe_spec.get('外径', default['outer'] / 1.2)
+        specs[sleeve_dn] = {
+            'outer': round(pipe_outer * 1.2, 1),
+            'wall': default['wall'],
+            'applicable_pipe': pipe_dn,
+        }
+    return specs
 
 
 class SleeveEntity(BaseEntity):
     """穿墙套管实体"""
 
-    # 套管规格
-    SLEEVE_SPECS = {
-        'DN100': {'outer': 114.3, 'wall': 4.0, 'applicable_pipe': 'DN80'},
-        'DN150': {'outer': 168.3, 'wall': 4.5, 'applicable_pipe': 'DN100'},
-        'DN200': {'outer': 219.1, 'wall': 6.0, 'applicable_pipe': 'DN150'},
-    }
+    # ★ V2.0：从 pipes.json 推算
+    SLEEVE_SPECS = _load_sleeve_specs()
 
-    # 套管类型
     SLEEVE_TYPES = ['普通套管', '防水套管', '柔性防水套管', '刚性防水套管']
 
     def __init__(self, sleeve_type: str = '普通套管', dn: str = 'DN150',
                  wall_thickness: float = 240, position: Optional[Dict] = None,
                  space: Optional[Dict] = None):
-        # 类型校验
         if sleeve_type not in self.SLEEVE_TYPES:
             sleeve_type = '普通套管'
         if dn not in self.SLEEVE_SPECS:
@@ -37,10 +66,9 @@ class SleeveEntity(BaseEntity):
 
         position = position or {'x': 5000, 'y': -150, 'z': 2500}
 
-        # 计算套管长度 = 墙厚 + 100mm（两侧各出50mm）
+        # 计算套管长度 = 墙厚 + 100mm
         length = wall_thickness + 100
 
-        # 受力点：套管中心
         force_points = [
             {
                 'id': 'fp_center',
@@ -52,7 +80,6 @@ class SleeveEntity(BaseEntity):
             }
         ]
 
-        # 接触面：内外壁（管道/墙体）
         contact_faces = [
             {
                 'id': 'cf_inner_wall',
@@ -78,7 +105,6 @@ class SleeveEntity(BaseEntity):
             },
         ]
 
-        # L2层
         l2 = {
             '类型': sleeve_type,
             '规格': dn,
@@ -96,13 +122,11 @@ class SleeveEntity(BaseEntity):
             '包围盒': {'x': length, 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = {
             '物理规则': {
                 '包围盒': {'x': length, 'y': spec['outer'], 'z': spec['outer']},
@@ -145,20 +169,17 @@ class SleeveEntity(BaseEntity):
         self.length = length
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
         self.layer['r_layer']['子类型'] = sleeve_type
 
     def calc_length(self) -> float:
-        """计算套管长度"""
         return self.length
 
     def check_clearance(self, pipe_dn: str) -> Dict[str, Any]:
         """检查管道与套管的间隙"""
-        pipe_specs = {
-            'DN100': 114.3, 'DN80': 88.9, 'DN150': 168.3, 'DN200': 219.1,
-        }
-        pipe_outer = pipe_specs.get(pipe_dn, 114.3)
+        pipe_spec = read_standard('pipes', pipe_dn)
+        pipe_outer = pipe_spec.get('外径', 114.3)
+
         sleeve_outer = self.SLEEVE_SPECS[self.dn]['outer']
         sleeve_wall = self.SLEEVE_SPECS[self.dn]['wall']
         sleeve_inner = sleeve_outer - 2 * sleeve_wall
@@ -172,15 +193,12 @@ class SleeveEntity(BaseEntity):
         }
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '套管',

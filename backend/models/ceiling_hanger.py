@@ -4,6 +4,8 @@
 受 GPL v3.0 保护
 
 悬挂吊顶。含受力点+接触面。
+
+V2.0（阶段1）：直径从 bolts.json 读，max_load 保持产品属性硬编码。
 """
 
 from typing import Dict, Any, List, Optional
@@ -13,20 +15,37 @@ from .physics_rules import (
     ceiling_hanger_force_points,
     ceiling_hanger_contact_faces,
 )
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载丝杆规格 ====================
+
+_DEFAULT_CEILING_HANGER_SPECS = {
+    'M8':  {'diameter': 8,  'max_load': '50kg'},
+    'M10': {'diameter': 10, 'max_load': '80kg'},
+    'M12': {'diameter': 12, 'max_load': '120kg'},
+}
+
+
+def _load_ceiling_hanger_specs() -> Dict[str, Dict[str, Any]]:
+    """直径从 bolts.json 读（M8没有则用默认），max_load 保持产品属性。"""
+    specs = {}
+    for spec, default in _DEFAULT_CEILING_HANGER_SPECS.items():
+        bolt_spec = read_standard('bolts', spec)
+        specs[spec] = {
+            'diameter': bolt_spec.get('直径', default['diameter']),
+            'max_load': default['max_load'],
+        }
+    return specs
 
 
 class CeilingHangerEntity(BaseEntity):
     """吊顶丝杆实体"""
 
-    # 规格表
-    CEILING_HANGER_SPECS = {
-        'M8':  {'diameter': 8,  'max_load': '50kg'},
-        'M10': {'diameter': 10, 'max_load': '80kg'},
-        'M12': {'diameter': 12, 'max_load': '120kg'},
-    }
+    # ★ V2.0：从 bolts.json 加载
+    CEILING_HANGER_SPECS = _load_ceiling_hanger_specs()
 
-    # 间距限制
     MAX_SPACING = 1200
 
     def __init__(self, spec: str = 'M8', length: float = 300,
@@ -39,11 +58,9 @@ class CeilingHangerEntity(BaseEntity):
 
         position = position or {'x': 1000, 'y': 0, 'z': 2700}
 
-        # 受力点/接触面
         force_points = ceiling_hanger_force_points(spec, length)
         contact_faces = ceiling_hanger_contact_faces(spec, length)
 
-        # L2层
         l2 = {
             '类型': '吊顶丝杆',
             '规格': spec,
@@ -59,13 +76,11 @@ class CeilingHangerEntity(BaseEntity):
             '包围盒': {'x': spec_data['diameter'], 'y': spec_data['diameter'], 'z': length},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = ceiling_hanger_cbm(spec, length)
 
         super().__init__(
@@ -83,12 +98,10 @@ class CeilingHangerEntity(BaseEntity):
         self.index = index
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = spec
 
     def calc_load(self) -> Dict[str, Any]:
         """计算丝杆载荷"""
-        # 简化：按最大承重计算
         max_load = self.CEILING_HANGER_SPECS[self.spec]['max_load']
         return {
             'current_load': '15kg',
@@ -112,15 +125,12 @@ class CeilingHangerEntity(BaseEntity):
         }
 
     def get_force_points(self) -> List[Dict[str, Any]]:
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '吊顶丝杆',

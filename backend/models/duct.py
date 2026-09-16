@@ -5,39 +5,63 @@
 
 镀锌钢板风管。含受力点+接触面。
 风管优先级2，与其他管道间距≥150mm。
+
+V2.0（阶段1）：DUCT_SPECS 从 ducts.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import duct_cbm, duct_force_points, duct_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载风管规格 ====================
+
+_DEFAULT_DUCT_SPECS = {
+    '800×400': {'width': 800, 'height': 400, 'weight_per_m': 18.5, 'thickness': 1.0},
+    '400×200': {'width': 400, 'height': 200, 'weight_per_m': 15,   'thickness': 0.8},
+    '500×250': {'width': 500, 'height': 250, 'weight_per_m': 20,   'thickness': 1.0},
+    '320×160': {'width': 320, 'height': 160, 'weight_per_m': 12,   'thickness': 0.8},
+}
+
+
+def _load_duct_specs() -> Dict[str, Dict[str, float]]:
+    """从 ducts.json 加载风管规格。JSON没有的用默认值。"""
+    specs = {}
+    for spec, default in _DEFAULT_DUCT_SPECS.items():
+        s = read_standard('ducts', spec)
+        specs[spec] = {
+            'width': s.get('宽度', default['width']),
+            'height': s.get('高度', default['height']),
+            'weight_per_m': s.get('单位重量', default['weight_per_m']),
+            'thickness': s.get('壁厚', default['thickness']),
+        }
+    return specs
 
 
 class DuctEntity(BaseEntity):
     """风管实体"""
 
-    # 风管规格（宽×高）
-    DUCT_SPECS = {
-        '400×200': {'width': 400, 'height': 200, 'weight_per_m': 15},
-        '500×250': {'width': 500, 'height': 250, 'weight_per_m': 20},
-        '320×160': {'width': 320, 'height': 160, 'weight_per_m': 12},
-    }
+    # ★ V2.0：从 ducts.json 加载
+    DUCT_SPECS = _load_duct_specs()
 
-    # 最小间距
     MIN_CLEARANCE = 150
 
-    def __init__(self, spec: str = '400×200', material: str = '镀锌钢板',
-                 thickness: float = 0.8, start: Optional[Dict] = None,
+    def __init__(self, spec: str = '800×400', material: str = '镀锌钢板',
+                 thickness: Optional[float] = None, start: Optional[Dict] = None,
                  end: Optional[Dict] = None, manufacturer: str = '风管厂',
                  system: str = '通风系统', space: Optional[Dict] = None):
         if spec not in self.DUCT_SPECS:
-            spec = '400×200'
+            spec = '800×400'
         spec_data = self.DUCT_SPECS[spec]
+
+        if thickness is None:
+            thickness = spec_data.get('thickness', 1.0)
 
         start = start or {'x': 0, 'y': -600, 'z': 2800}
         end = end or {'x': 10000, 'y': -600, 'z': 2800}
 
-        # 长度计算
         length = abs(end['x'] - start['x']) or 10000
         center = {
             'x': (start['x'] + end['x']) / 2,
@@ -45,14 +69,11 @@ class DuctEntity(BaseEntity):
             'z': (start['z'] + end['z']) / 2,
         }
 
-        # 重量计算
         total_weight = round(spec_data['weight_per_m'] * length / 1000, 2)
 
-        # 受力点/接触面
         force_points = duct_force_points(spec, thickness)
         contact_faces = duct_contact_faces(spec, thickness)
 
-        # L2层
         l2 = {
             '规格': spec,
             '宽度': f'{spec_data["width"]}mm',
@@ -67,7 +88,6 @@ class DuctEntity(BaseEntity):
             '包围盒': {'x': length, 'y': spec_data['width'], 'z': spec_data['height']},
         }
 
-        # L3层
         l3 = {
             '起点坐标': start,
             '终点坐标': end,
@@ -76,7 +96,6 @@ class DuctEntity(BaseEntity):
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = duct_cbm(spec, thickness)
 
         super().__init__(
@@ -95,12 +114,10 @@ class DuctEntity(BaseEntity):
         self.system = system
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = spec
         self.layer['r_layer']['系统'] = system
 
     def calc_weight(self) -> float:
-        """计算风管总重量"""
         return float(str(self.layer['l2_static_attributes']['总重量']).replace('kg', ''))
 
     def check_clearance(self, entities: List[Any]) -> Dict[str, Any]:
@@ -119,7 +136,6 @@ class DuctEntity(BaseEntity):
             dy = abs(my_pos['y'] - e_pos.get('y', 0))
             dz = abs(my_pos['z'] - e_pos.get('z', 0))
 
-            # 简化：只检查垂直方向的距离
             min_dist = min(dy, dz)
             if min_dist < self.MIN_CLEARANCE:
                 violations.append({
@@ -136,15 +152,12 @@ class DuctEntity(BaseEntity):
         }
 
     def get_force_points(self) -> List[Dict[str, Any]]:
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '风管',

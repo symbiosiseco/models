@@ -5,30 +5,48 @@
 
 两种用途：阀门法兰垫片 / 卡箍橡胶圈。
 含接触面+5个绝对约束。
+
+V2.0（阶段1）：GASKET_SPECS 从 gaskets.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import gasket_cbm, gasket_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载垫片规格 ====================
+
+_DEFAULT_GASKET_SPECS = {
+    'DN50':  {'outer': 107, 'inner': 61,    'thickness': 3},
+    'DN80':  {'outer': 142, 'inner': 89,    'thickness': 3},
+    'DN100': {'outer': 162, 'inner': 115,   'thickness': 3},
+    'DN150': {'outer': 218, 'inner': 169,   'thickness': 3},
+    'DN200': {'outer': 273, 'inner': 220,   'thickness': 3},
+}
+
+
+def _load_gasket_specs() -> Dict[str, Dict[str, float]]:
+    """从 gaskets.json 加载垫片规格。"""
+    specs = {}
+    for dn, default in _DEFAULT_GASKET_SPECS.items():
+        s = read_standard('gaskets', dn)
+        specs[dn] = {
+            'outer': s.get('垫片外径', default['outer']),
+            'inner': s.get('垫片内径', default['inner']),
+            'thickness': s.get('厚度', default['thickness']),
+        }
+    return specs
 
 
 class GasketEntity(BaseEntity):
     """垫片/橡胶圈实体"""
 
-    # 垫片规格
-    GASKET_SPECS = {
-        'DN50':  {'outer': 165, 'inner': 60.3,  'thickness': 3},
-        'DN80':  {'outer': 200, 'inner': 88.9,  'thickness': 3},
-        'DN100': {'outer': 220, 'inner': 114.3, 'thickness': 3},
-        'DN150': {'outer': 285, 'inner': 168.3, 'thickness': 3},
-        'DN200': {'outer': 340, 'inner': 219.1, 'thickness': 3},
-    }
+    # ★ V2.0：从 JSON 加载
+    GASKET_SPECS = _load_gasket_specs()
 
-    # 垫片类型
     GASKET_TYPES = ['法兰垫片', '卡箍橡胶圈']
-
-    # 材质
     MATERIALS = ['三元乙丙(EPDM)', '丁腈橡胶', '聚四氟乙烯']
 
     def __init__(self, dn: str = 'DN100', gasket_type: str = '法兰垫片',
@@ -46,13 +64,9 @@ class GasketEntity(BaseEntity):
 
         position = position or {'x': 4000, 'y': -150, 'z': 2500}
 
-        # 接触面
         contact_faces = gasket_contact_faces(dn, spec['outer'], spec['thickness'])
-
-        # 5个绝对约束
         constraints = self._build_constraints(spec)
 
-        # L2层
         l2 = {
             '类型': gasket_type,
             '规格': dn,
@@ -69,13 +83,11 @@ class GasketEntity(BaseEntity):
             '包围盒': {'x': spec['thickness'], 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '安装日期': None,
         }
 
-        # CBM层
         cbm = gasket_cbm(dn, spec['outer'], spec['thickness'])
         cbm['规范约束']['设计年限'] = f'{design_life}年'
         cbm['规范约束']['更换周期'] = f'{design_life - 2}年检查，{design_life}年更换'
@@ -97,22 +109,11 @@ class GasketEntity(BaseEntity):
         self.system = system
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
         self.layer['r_layer']['子类型'] = gasket_type
 
-    # ==================== 5个绝对约束 ====================
-
     def _build_constraints(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        构建垫片的5个绝对约束。
-
-        1. 位置约束：必须在两法兰中间
-        2. 范围约束：不能超出法兰外径
-        3. 孔径约束：不能遮住螺丝孔
-        4. 方向约束：必须与法兰面平行
-        5. 数量约束：每个法兰连接必须有1个
-        """
+        """构建垫片的5个绝对约束。"""
         return [
             {
                 '类型': '位置约束',
@@ -122,7 +123,7 @@ class GasketEntity(BaseEntity):
             },
             {
                 '类型': '范围约束',
-                '规则': f'外径 ≤ {spec["outer"]}mm（法兰外径）',
+                '规则': f'外径 ≤ {spec["outer"]}mm（法兰密封面外径）',
                 '违反后果': '无效密封',
                 '允许偏差': '0mm',
             },
@@ -147,11 +148,9 @@ class GasketEntity(BaseEntity):
         ]
 
     def get_constraints(self) -> List[Dict[str, Any]]:
-        """获取5个约束"""
         return self.layer['l2_static_attributes'].get('约束', [])
 
     def check_position(self, flange_left, flange_right) -> Dict[str, Any]:
-        """检查垫片位置：必须在两法兰中间"""
         gasket_pos = self.get_position()
         left_pos = flange_left.get_position() if hasattr(flange_left, 'get_position') else flange_left.layer['l3_dynamic_state']['绝对坐标']
         right_pos = flange_right.get_position() if hasattr(flange_right, 'get_position') else flange_right.layer['l3_dynamic_state']['绝对坐标']
@@ -168,7 +167,6 @@ class GasketEntity(BaseEntity):
         }
 
     def check_range(self, flange_outer_d: str) -> Dict[str, Any]:
-        """检查垫片范围：不能超出法兰外径"""
         gasket_outer = self._parse_mm(self.layer['l2_static_attributes']['外径'])
         flange_outer = self._parse_mm(flange_outer_d)
 
@@ -181,7 +179,6 @@ class GasketEntity(BaseEntity):
         }
 
     def check_hole_clearance(self, bolt_holes: List[Dict]) -> Dict[str, Any]:
-        """检查垫片是否遮住螺丝孔"""
         gasket_inner = self._parse_mm(self.layer['l2_static_attributes']['内径'])
         passed = gasket_inner > 0
         return {
@@ -192,11 +189,9 @@ class GasketEntity(BaseEntity):
         }
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '垫片',

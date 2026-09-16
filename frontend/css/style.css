@@ -80,9 +80,9 @@ html, body {
 /* ==================== 主布局 ==================== */
 .layout {
     display: grid;
-    grid-template-columns: var(--left-width) var(--splitter-size) minmax(0, 1fr) var(--splitter-size) var(--right-width);
+    grid-template-columns: var(--left-width) var(--splitter-size) minmax(280px, 1fr) var(--splitter-size) var(--right-width);
     height: calc(100vh - var(--top-bar-height) - var(--footer-height));
-    overflow: hidden;
+    overflow: auto;
 }
 
 /* ==================== 侧栏 ==================== */

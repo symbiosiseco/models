@@ -85,6 +85,10 @@ template_store = None
 digital_life_generator = None
 # 演示执行器
 demo_runner = None
+# ★ V2.0 阶段2-2：参数传播引擎
+propagation_engine = None
+# ★ V2.0 阶段2-3：实体重建引擎
+rebuild_engine = None
 # 数据库
 db_initialized = False
 # SocketIO
@@ -162,6 +166,13 @@ def init_engines():
     signature_engine = SignatureEngine(event_bus, workflow_engine)
     measurement_engine = MeasurementEngine(event_bus)
     replacement_engine = ReplacementEngine(event_bus, template_store)
+    
+    # ★ V2.0 新增：注入 event_bus 和 replacement_engine 到 assembly_engine（专报E要求）
+    if assembly_engine:
+        assembly_engine.event_bus = event_bus
+        assembly_engine.replacement_engine = replacement_engine
+    
+    template_engine = TemplateEngine(template_store)
     template_engine = TemplateEngine(template_store)
     bom_engine = BOMEngine(event_bus)
     priority_engine = PriorityEngine(config)
@@ -193,6 +204,23 @@ def init_engines():
     # 替换引擎注入碰撞/造价
     replacement_engine.collision_engine = collision_engine
     replacement_engine.cost_engine = cost_engine
+
+    # ★ V2.0 阶段2-2：初始化参数传播引擎
+    global propagation_engine
+    from engines.propagation import PropagationEngine
+    propagation_engine = PropagationEngine(event_bus, entity_map)
+
+    # 注册到 standard_reader（参数变更时会回调）
+    try:
+        from data import standard_reader
+        standard_reader.register_change_hook(propagation_engine.on_param_change)
+    except Exception as e:
+        print(f"⚠️ 注册参数变更钩子失败：{e}")
+
+    # ★ V2.0 阶段2-3：初始化重建引擎
+    global rebuild_engine
+    from engines.rebuild_engine import RebuildEngine
+    rebuild_engine = RebuildEngine(entity_map, event_bus)
 
 
 # ============================================================
@@ -305,6 +333,10 @@ def init_api(app):
     from api.search import search_bp, set_deps as search_set_deps
     from api.export import export_bp, set_deps as export_set_deps
     from api.websocket import set_deps as ws_set_deps, register_socketio_handlers
+    from api.assembly import assembly_bp, set_deps as assembly_set_deps
+    from system.l4_api import l4_bp, set_deps as l4_set_deps
+    from system.standards_api import standards_bp, set_deps as standards_set_deps
+    from system.game_api import game_bp, set_deps as game_set_deps
 
     # ---------- system 蓝图 ----------
     from system.event_bus_api import event_bus_bp, set_deps as event_bus_set_deps
@@ -333,6 +365,10 @@ def init_api(app):
     app.register_blueprint(contact_face_bp)
     app.register_blueprint(operation_recorder_bp)
     app.register_blueprint(lineage_bp)
+    app.register_blueprint(assembly_bp)
+    app.register_blueprint(l4_bp)
+    app.register_blueprint(standards_bp)
+    app.register_blueprint(game_bp)
 
     # ---------- 注入依赖 ----------
     set_entities(entity_map)
@@ -350,6 +386,32 @@ def init_api(app):
     contact_face_set_deps(contact_check_engine, entity_map)
     recorder_set_deps(demo_runner, export_engine)
     lineage_set_deps(entity_map, config.DB_PATH)
+    assembly_set_deps(assembly_engine, entity_map)
+
+    # ★ V2.0 新增：初始化运维场景（用于 L4 API）
+    try:
+        from modules.maintenance import MaintenanceScene
+        maintenance_scene = MaintenanceScene({}, entity_map, event_bus)
+        l4_set_deps(entity_map, maintenance_scene)
+    except Exception as e:
+        print(f"⚠️ 运维场景初始化失败：{e}")
+        l4_set_deps(entity_map, None)
+
+    # ★ V2.0 阶段2-2：注入 standards API 依赖
+    try:
+        from data import standard_reader
+        standards_set_deps(propagation_engine, standard_reader)
+        # ★ V2.0 阶段2-3：注入 rebuild engine
+        from system.standards_api import set_rebuild_engine
+        set_rebuild_engine(rebuild_engine)
+    except Exception as e:
+        print(f"⚠️ standards API 依赖注入失败：{e}")
+
+    # ★ V2.0 游戏式安装 API
+    try:
+        game_set_deps(entity_map, event_bus)
+    except Exception as e:
+        print(f"⚠️ game API 依赖注入失败：{e}")
 
     return register_socketio_handlers
 

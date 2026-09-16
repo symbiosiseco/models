@@ -5,25 +5,48 @@
 
 连接两段管道。含受力点+接触面。
 必须包含橡胶圈。
+
+V2.0（阶段1）：CLAMP_SPECS 从 clamps.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import clamp_cbm, clamp_force_points, clamp_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载卡箍规格 ====================
+
+_DEFAULT_CLAMP_SPECS = {
+    'DN50':  {'width': 45, 'outer': 88,  'weight': 0.6, 'bolt': 'M8×55',  'bolt_count': 2},
+    'DN80':  {'width': 50, 'outer': 120, 'weight': 0.9, 'bolt': 'M10×65', 'bolt_count': 2},
+    'DN100': {'width': 60, 'outer': 140, 'weight': 1.2, 'bolt': 'M10×65', 'bolt_count': 2},
+    'DN150': {'width': 70, 'outer': 200, 'weight': 2.2, 'bolt': 'M12×75', 'bolt_count': 2},
+    'DN200': {'width': 80, 'outer': 260, 'weight': 3.5, 'bolt': 'M12×75', 'bolt_count': 2},
+}
+
+
+def _load_clamp_specs() -> Dict[str, Dict[str, Any]]:
+    """从 clamps.json 加载卡箍规格。JSON没有的用默认值。"""
+    specs = {}
+    for dn, default in _DEFAULT_CLAMP_SPECS.items():
+        s = read_standard('clamps', dn)
+        specs[dn] = {
+            'width': s.get('卡箍宽度', default['width']),
+            'outer': s.get('卡箍外径', default['outer']),
+            'weight': s.get('重量', default['weight']),
+            'bolt': s.get('螺栓规格', default['bolt']),
+            'bolt_count': s.get('螺栓数', default['bolt_count']),
+        }
+    return specs
 
 
 class ClampEntity(BaseEntity):
     """沟槽卡箍实体"""
 
-    # 卡箍国标尺寸（CJ/T 156）
-    CLAMP_SPECS = {
-        'DN50':  {'width': 45, 'outer': 88,  'weight': 0.6, 'bolt': 'M8×55',  'bolt_count': 2},
-        'DN80':  {'width': 50, 'outer': 120, 'weight': 0.9, 'bolt': 'M10×65', 'bolt_count': 2},
-        'DN100': {'width': 60, 'outer': 140, 'weight': 1.2, 'bolt': 'M10×65', 'bolt_count': 2},
-        'DN150': {'width': 70, 'outer': 200, 'weight': 2.2, 'bolt': 'M12×75', 'bolt_count': 2},
-        'DN200': {'width': 80, 'outer': 260, 'weight': 3.5, 'bolt': 'M12×75', 'bolt_count': 2},
-    }
+    # ★ V2.0：从 JSON 加载
+    CLAMP_SPECS = _load_clamp_specs()
 
     def __init__(self, dn: str = 'DN100', manufacturer: str = 'B厂',
                  position: Optional[Dict] = None, connect_pipes: Optional[List] = None,
@@ -35,13 +58,9 @@ class ClampEntity(BaseEntity):
         position = position or {'x': 6000, 'y': -150, 'z': 2500}
         connect_pipes = connect_pipes or []
 
-        # 受力点
         force_points = clamp_force_points(dn, spec['outer'], spec['width'])
-
-        # 接触面
         contact_faces = clamp_contact_faces(dn, spec['outer'], spec['width'])
 
-        # L2层
         l2 = {
             '规格': dn,
             '厂家': manufacturer,
@@ -59,13 +78,11 @@ class ClampEntity(BaseEntity):
             '包围盒': {'x': spec['width'], 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = clamp_cbm(dn, spec['outer'], spec['width'])
 
         super().__init__(
@@ -82,7 +99,6 @@ class ClampEntity(BaseEntity):
         self.connect_pipes = list(connect_pipes)
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
         self.layer['r_layer']['系统'] = system
 
@@ -91,11 +107,9 @@ class ClampEntity(BaseEntity):
         return bool(pipe_groove)
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def has_rubber_ring(self) -> bool:
@@ -103,10 +117,9 @@ class ClampEntity(BaseEntity):
         for cf in self.get_contact_faces():
             if '橡胶圈' in cf.get('必须包含', []):
                 return True
-        return True  # 默认含橡胶圈
+        return True
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '卡箍',

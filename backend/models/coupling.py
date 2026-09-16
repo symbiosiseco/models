@@ -4,24 +4,45 @@
 受 GPL v3.0 保护
 
 连接两段同管径的管道。含受力点+接触面。
+
+V2.0（阶段1）：尺寸从 pipes.json 推算。
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional, List
 from .entity import BaseEntity
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON推算联轴器规格 ====================
+
+_DEFAULT_COUPLING_SPECS = {
+    'DN50':  {'outer': 88,  'length': 90},
+    'DN80':  {'outer': 120, 'length': 130},
+    'DN100': {'outer': 140, 'length': 170},
+    'DN150': {'outer': 200, 'length': 250},
+    'DN200': {'outer': 260, 'length': 330},
+}
+
+
+def _load_coupling_specs() -> Dict[str, Dict[str, float]]:
+    """联轴器外径 ≈ 管道外径 × 1.22，长度 ≈ 管道外径 × 1.5"""
+    specs = {}
+    for dn, default in _DEFAULT_COUPLING_SPECS.items():
+        pipe_spec = read_standard('pipes', dn)
+        outer = pipe_spec.get('外径', default['outer'] / 1.22)
+        specs[dn] = {
+            'outer': round(outer * 1.22, 1),
+            'length': round(outer * 1.5, 1),
+        }
+    return specs
 
 
 class CouplingEntity(BaseEntity):
     """联轴器实体"""
 
-    # 联轴器规格
-    COUPLING_SPECS = {
-        'DN50':  {'outer': 88,  'length': 100},
-        'DN80':  {'outer': 120, 'length': 120},
-        'DN100': {'outer': 140, 'length': 140},
-        'DN150': {'outer': 200, 'length': 180},
-        'DN200': {'outer': 260, 'length': 220},
-    }
+    # ★ V2.0：从 pipes.json 推算
+    COUPLING_SPECS = _load_coupling_specs()
 
     def __init__(self, dn: str = 'DN100', material: str = '镀锌铸铁',
                  position: Optional[Dict] = None, connect_pipes: Optional[List] = None,
@@ -30,10 +51,9 @@ class CouplingEntity(BaseEntity):
             dn = 'DN100'
         spec = self.COUPLING_SPECS[dn]
 
-        position = position or {'x': 3000, 'y': -150, 'z': 2500}
+        position = position or {'x': 6000, 'y': -150, 'z': 2500}
         connect_pipes = connect_pipes or []
 
-        # 受力点：联轴器中心
         force_points = [
             {
                 'id': 'fp_center',
@@ -45,7 +65,6 @@ class CouplingEntity(BaseEntity):
             }
         ]
 
-        # 接触面：两端沟槽
         contact_faces = [
             {
                 'id': 'cf_groove_left',
@@ -71,7 +90,6 @@ class CouplingEntity(BaseEntity):
             },
         ]
 
-        # L2层
         l2 = {
             '规格': dn,
             '材质': material,
@@ -83,13 +101,11 @@ class CouplingEntity(BaseEntity):
             '包围盒': {'x': spec['length'], 'y': spec['outer'], 'z': spec['outer']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = {
             '物理规则': {
                 '包围盒': {'x': spec['length'], 'y': spec['outer'], 'z': spec['outer']},
@@ -127,11 +143,11 @@ class CouplingEntity(BaseEntity):
         )
 
         self.dn = dn
+        self.material = material
         self.system = system
         self.connect_pipes = list(connect_pipes)
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = dn
 
     def check_dn_match(self, pipe1_dn: str, pipe2_dn: str) -> bool:
@@ -139,15 +155,12 @@ class CouplingEntity(BaseEntity):
         return pipe1_dn == pipe2_dn
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '联轴器',

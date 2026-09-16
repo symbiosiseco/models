@@ -5,29 +5,56 @@
 
 支持多种规格。含受力点+接触面。
 M16拧紧力矩40N·m，M20为80N·m。
+
+V2.0（阶段1）：BOLT_SPECS 从 bolts.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import bolt_cbm, bolt_force_points, bolt_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载螺栓规格 ====================
+
+_DEFAULT_BOLT_SPECS = {
+    'M10': {'diameter': 10, 'length': 65,  'torque': 15, 'preload': 10000, 'tensile': 300},
+    'M12': {'diameter': 12, 'length': 100, 'torque': 20, 'preload': 15000, 'tensile': 400},
+    'M16': {'diameter': 16, 'length': 80,  'torque': 40, 'preload': 25000, 'tensile': 500},
+    'M20': {'diameter': 20, 'length': 100, 'torque': 80, 'preload': 40000, 'tensile': 600},
+}
+
+
+def _load_bolt_specs() -> Dict[str, Dict[str, Any]]:
+    """从 bolts.json 加载螺栓规格。"""
+    specs = {}
+    for spec, default in _DEFAULT_BOLT_SPECS.items():
+        s = read_standard('bolts', spec)
+        # 预紧力单位转换：JSON 里是 kN，原代码用 N
+        preload_kn = s.get('预紧力')
+        if preload_kn is not None:
+            preload_n = preload_kn * 1000
+        else:
+            preload_n = default['preload']
+
+        specs[spec] = {
+            'diameter': s.get('直径', default['diameter']),
+            'length': s.get('标准长度', default['length']),
+            'torque': s.get('拧紧力矩', default['torque']),
+            'preload': preload_n,
+            'tensile': default['tensile'],  # JSON里没有，保留默认
+        }
+    return specs
 
 
 class BoltEntity(BaseEntity):
     """螺栓实体"""
 
-    # 螺栓国标（GB/T 5782）
-    BOLT_SPECS = {
-        'M10': {'diameter': 10, 'length': 65,  'torque': 15, 'preload': 10000, 'tensile': 300},
-        'M12': {'diameter': 12, 'length': 100, 'torque': 20, 'preload': 15000, 'tensile': 400},
-        'M16': {'diameter': 16, 'length': 80,  'torque': 40, 'preload': 25000, 'tensile': 500},
-        'M20': {'diameter': 20, 'length': 100, 'torque': 80, 'preload': 40000, 'tensile': 600},
-    }
+    # ★ V2.0：从 JSON 加载
+    BOLT_SPECS = _load_bolt_specs()
 
-    # 螺栓类型
     BOLT_TYPES = ['膨胀螺栓', '法兰螺栓', '六角螺栓', '螺母', '垫圈']
-
-    # 公差
     FIT_TOLERANCE = 0.5
 
     def __init__(self, spec: str = 'M12', bolt_type: str = '膨胀螺栓',
@@ -46,13 +73,9 @@ class BoltEntity(BaseEntity):
 
         position = position or {'x': 1000, 'y': -800, 'z': 100}
 
-        # 受力点
         force_points = bolt_force_points(spec, length)
-
-        # 接触面
         contact_faces = bolt_contact_faces(spec, length)
 
-        # L2层
         l2 = {
             '类型': bolt_type,
             '规格': spec,
@@ -70,13 +93,11 @@ class BoltEntity(BaseEntity):
             '包围盒': {'x': length, 'y': bolt_spec['diameter'], 'z': bolt_spec['diameter']},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': position,
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = bolt_cbm(spec, length)
         cbm['装配规则']['公差'] = self.FIT_TOLERANCE
 
@@ -97,20 +118,11 @@ class BoltEntity(BaseEntity):
         self.space = space or config.SPACE_UNITS
         self.diameter = bolt_spec['diameter']
 
-        # 更新R层
         self.layer['r_layer']['规格'] = spec
         self.layer['r_layer']['子类型'] = bolt_type
 
-    # ==================== 孔径检查 ====================
-
     def check_hole_fit(self, hole_diameter: float) -> Dict[str, Any]:
-        """
-        检查螺栓能否穿过孔。
-
-        规则：螺栓直径 + 公差（0.5mm） ≤ 孔径
-        - M16 (16) + 0.5 = 16.5 ≤ 18 ✅
-        - M20 (20) + 0.5 = 20.5 > 18 ❌
-        """
+        """检查螺栓能否穿过孔。"""
         passed = (self.diameter + self.FIT_TOLERANCE) <= hole_diameter
         return {
             'success': passed,
@@ -134,18 +146,13 @@ class BoltEntity(BaseEntity):
             'tensile_capacity': bolt_spec['tensile'],
         }
 
-    # ==================== 受力点/接触面 ====================
-
     def get_force_points(self) -> List[Dict[str, Any]]:
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '螺栓',

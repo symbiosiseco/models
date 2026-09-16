@@ -40,8 +40,70 @@ class SceneBuilder:
         # 9. 装配测试区
         test_area = self._build_assembly_test_area()
 
+        # ★ A-2 新增：收集所有支架的锚点
+        anchors = []
+        for e in pipes:
+            if hasattr(e, 'anchors'):
+                anchors.extend(e.anchors)
+
+        # ★ A-4 新增：从标准库生成 3 个任务
+        from models.task_from_std import TaskFromStd
+        demo_tasks = []
+        task_types = ['安装支架', '安装管道', '系统试压']
+        for ttype in task_types:
+            try:
+                task = TaskFromStd(task_type=ttype)
+                demo_tasks.append(task)
+            except ValueError as e:
+                print(f"⚠️ 任务生成失败：{e}")
+
+        # ★ A-5 新增：从标准库生成 1 个流程
+        from models.process_from_std import ProcessFromStd
+        demo_processes = []
+        try:
+            proc = ProcessFromStd(process_type='管道安装流程')
+            # 关联实际的任务ID
+            task_ids = [t.id for t in demo_tasks if t.task_type in ['安装支架', '安装管道', '系统试压']]
+            proc.link_tasks(task_ids)
+            demo_processes.append(proc)
+        except ValueError as e:
+            print(f"⚠️ 流程生成失败：{e}")
+
+        # 建立任务之间的前后关系
+        if len(demo_tasks) >= 2:
+            demo_tasks[0].successor = [demo_tasks[1].id]
+            demo_tasks[0].layer['l2_static_attributes']['后续任务'] = [demo_tasks[1].id]
+        if len(demo_tasks) >= 3:
+            demo_tasks[1].predecessor = demo_tasks[0].id
+            demo_tasks[1].successor = [demo_tasks[2].id]
+            demo_tasks[1].layer['l2_static_attributes']['前置任务'] = demo_tasks[0].id
+            demo_tasks[1].layer['l2_static_attributes']['后续任务'] = [demo_tasks[2].id]
+            demo_tasks[2].predecessor = demo_tasks[1].id
+            demo_tasks[2].layer['l2_static_attributes']['前置任务'] = demo_tasks[1].id
+
+        # ★ A-3 保留：为"安装支架"演示创建 4 个动作
+        from models.action import ActionEntity
+        demo_actions = []
+        action_types = ['打孔', '装膨胀螺栓', '上支架', '锁紧支架']
+        # 找出"安装支架"任务的ID
+        install_support_task_id = 'TASK-DEMO-001'
+        for t in demo_tasks:
+            if t.task_type == '安装支架':
+                install_support_task_id = t.id
+                break
+        for i, atype in enumerate(action_types):
+            action = ActionEntity(
+                action_type=atype,
+                task_id=install_support_task_id,
+                target_id='SUP-001',
+                sequence=i + 1,
+            )
+            demo_actions.append(action)
+
         # 聚合
-        self.entities = orgs + workers + vehicles + structure + pipes + others + drawings + [contract] + test_area
+        self.entities = (orgs + workers + vehicles + structure + pipes + others +
+                         drawings + [contract] + test_area + anchors + demo_actions +
+                         demo_tasks + demo_processes)
         self.entity_map = {getattr(e, 'id', ''): e for e in self.entities if hasattr(e, 'id')}
 
         return {
@@ -111,9 +173,30 @@ class SceneBuilder:
         pipes.append(pipe)
 
         # 2. 支架（5个）
+        # ★ A-2 新增：每个支架创建 2 个锚点实体
+        from models.anchor import AnchorEntity
         for i in range(5):
             support = SupportEntity(index=i, x_pos=1000 + i * 2000)
             pipes.append(support)
+
+            # 从支架的 L2 里读取锚点定义，创建锚点实体
+            support.anchors = []
+            anchor_l2_list = support.layer['l2_static_attributes'].get('锚点', [])
+            for anchor_info in anchor_l2_list:
+                anchor_rel = anchor_info.get('位置', {'x': 0, 'y': 0, 'z': 0})
+                anchor_abs = {
+                    'x': support.x_pos + anchor_rel.get('x', 0),
+                    'y': -100 + anchor_rel.get('y', 0),
+                    'z': 2500 + anchor_rel.get('z', 0),
+                }
+                anchor = AnchorEntity(
+                    anchor_type='M12_膨胀螺栓孔',
+                    owner_id=support.id,
+                    position=anchor_abs,
+                )
+                # 把锚点ID回写到支架的 L2 里
+                anchor_info['实体ID'] = anchor.id
+                support.anchors.append(anchor)
 
         # 3. 卡箍（1个，位于6米处）
         clamp = ClampEntity(dn='DN100', position={'x': 6000, 'y': -150, 'z': 2500})
@@ -186,10 +269,10 @@ class SceneBuilder:
         """构建风管/桥架"""
         from models import DuctEntity, TrayEntity
         return [
-            DuctEntity(spec='400×200',
+            DuctEntity(spec='800×400',
                        start={'x': 0, 'y': -600, 'z': 2800},
                        end={'x': 10000, 'y': -600, 'z': 2800}),
-            TrayEntity(spec='300×100',
+            TrayEntity(spec='300×200',
                        start={'x': 0, 'y': -1000, 'z': 2700},
                        end={'x': 10000, 'y': -1000, 'z': 2700}),
         ]

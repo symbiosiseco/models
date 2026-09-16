@@ -5,39 +5,63 @@
 
 镀锌钢板桥架。含受力点+接触面。
 桥架优先级3，与水管间距≥100mm。
+
+V2.0（阶段1）：TRAY_SPECS 从 trays.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import tray_cbm, tray_force_points, tray_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载桥架规格 ====================
+
+_DEFAULT_TRAY_SPECS = {
+    '300×200': {'width': 300, 'height': 200, 'weight_per_m': 9.5, 'thickness': 1.5},
+    '300×100': {'width': 300, 'height': 100, 'weight_per_m': 8,   'thickness': 1.0},
+    '400×100': {'width': 400, 'height': 100, 'weight_per_m': 10,  'thickness': 1.0},
+    '200×100': {'width': 200, 'height': 100, 'weight_per_m': 6,   'thickness': 1.0},
+}
+
+
+def _load_tray_specs() -> Dict[str, Dict[str, float]]:
+    """从 trays.json 加载桥架规格。JSON没有的用默认值。"""
+    specs = {}
+    for spec, default in _DEFAULT_TRAY_SPECS.items():
+        s = read_standard('trays', spec)
+        specs[spec] = {
+            'width': s.get('宽度', default['width']),
+            'height': s.get('高度', default['height']),
+            'weight_per_m': s.get('单位重量', default['weight_per_m']),
+            'thickness': s.get('壁厚', default['thickness']),
+        }
+    return specs
 
 
 class TrayEntity(BaseEntity):
     """桥架实体"""
 
-    # 桥架规格（宽×高）
-    TRAY_SPECS = {
-        '300×100': {'width': 300, 'height': 100, 'weight_per_m': 8},
-        '400×100': {'width': 400, 'height': 100, 'weight_per_m': 10},
-        '200×100': {'width': 200, 'height': 100, 'weight_per_m': 6},
-    }
+    # ★ V2.0：从 trays.json 加载
+    TRAY_SPECS = _load_tray_specs()
 
-    # 最小间距
     MIN_CLEARANCE = 100
 
-    def __init__(self, spec: str = '300×100', material: str = '镀锌钢板',
-                 thickness: float = 1.0, start: Optional[Dict] = None,
+    def __init__(self, spec: str = '300×200', material: str = '镀锌钢板',
+                 thickness: Optional[float] = None, start: Optional[Dict] = None,
                  end: Optional[Dict] = None, manufacturer: str = '桥架厂',
                  system: str = '电气系统', space: Optional[Dict] = None):
         if spec not in self.TRAY_SPECS:
-            spec = '300×100'
+            spec = '300×200'
         spec_data = self.TRAY_SPECS[spec]
+
+        if thickness is None:
+            thickness = spec_data.get('thickness', 1.5)
 
         start = start or {'x': 0, 'y': -1000, 'z': 2700}
         end = end or {'x': 10000, 'y': -1000, 'z': 2700}
 
-        # 长度计算
         length = abs(end['x'] - start['x']) or 10000
         center = {
             'x': (start['x'] + end['x']) / 2,
@@ -45,14 +69,11 @@ class TrayEntity(BaseEntity):
             'z': (start['z'] + end['z']) / 2,
         }
 
-        # 重量计算
         total_weight = round(spec_data['weight_per_m'] * length / 1000, 2)
 
-        # 受力点/接触面
         force_points = tray_force_points(spec, thickness)
         contact_faces = tray_contact_faces(spec, thickness)
 
-        # L2层
         l2 = {
             '规格': spec,
             '宽度': f'{spec_data["width"]}mm',
@@ -67,7 +88,6 @@ class TrayEntity(BaseEntity):
             '包围盒': {'x': length, 'y': spec_data['width'], 'z': spec_data['height']},
         }
 
-        # L3层
         l3 = {
             '起点坐标': start,
             '终点坐标': end,
@@ -76,7 +96,6 @@ class TrayEntity(BaseEntity):
             '受力点实时坐标': [],
         }
 
-        # CBM层
         cbm = tray_cbm(spec, thickness)
 
         super().__init__(
@@ -95,12 +114,10 @@ class TrayEntity(BaseEntity):
         self.system = system
         self.space = space or config.SPACE_UNITS
 
-        # 更新R层
         self.layer['r_layer']['规格'] = spec
         self.layer['r_layer']['系统'] = system
 
     def calc_weight(self) -> float:
-        """计算桥架总重量"""
         return float(str(self.layer['l2_static_attributes']['总重量']).replace('kg', ''))
 
     def check_clearance(self, entities: List[Any]) -> Dict[str, Any]:
@@ -135,15 +152,12 @@ class TrayEntity(BaseEntity):
         }
 
     def get_force_points(self) -> List[Dict[str, Any]]:
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self) -> List[Dict[str, Any]]:
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '桥架',

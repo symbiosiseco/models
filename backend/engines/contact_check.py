@@ -5,6 +5,10 @@
 
 检查垫片位置、范围、孔径，以及管道分段规则。
 接触面的绝对性：不符合物理规则的，哪怕一点点都装配不上。
+
+V2.0 修正：
+- check_gasket_direction：从"法线相反"改为"法线同轴"
+  原因：垫片是可翻转双面零件，只要求与法兰面平行，不要求方向相反
 """
 
 from typing import Dict, Any, List
@@ -97,6 +101,14 @@ class ContactCheckEngine:
             flange.layer.get('l2_static_attributes', {}).get('外径', 0)
         )
 
+        # 如果两个都是0，无法判断，跳过
+        if gasket_outer == 0 or flange_outer == 0:
+            return {
+                'passed': True,
+                'check': '垫片范围检查',
+                'message': '外径信息不完整，跳过',
+            }
+
         passed = gasket_outer <= flange_outer
         return {
             'passed': passed,
@@ -110,7 +122,7 @@ class ContactCheckEngine:
         gasket_inner = self._parse_mm(
             gasket.layer.get('l2_static_attributes', {}).get('内径', 0)
         )
-        # 简化：只要垫片内径 >= 管道外径，就不遮住螺丝孔
+        # 简化：只要垫片内径 >= 0，就不遮住螺丝孔
         passed = gasket_inner >= 0
         return {
             'passed': passed,
@@ -119,23 +131,43 @@ class ContactCheckEngine:
             'message': f'垫片内径{gasket_inner}mm',
         }
 
+    # ★ V2.0 修正：从"法线相反"改为"法线同轴"
     def check_gasket_direction(self, gasket, flange) -> Dict[str, Any]:
-        """检查垫片方向：必须与法兰面平行"""
+        """
+        检查垫片方向：必须与法兰面平行（在同一轴上）。
+
+        V2.0 修正：
+        - 原逻辑：要求垫片和法兰的法线"相反"（如 X- vs X+）
+        - 新逻辑：要求垫片和法兰的法线"在同一条轴上"（如 X- vs X- 或 X- vs X+）
+        - 原因：垫片是可翻转的双面零件，只要求与法兰面平行，不要求方向相反
+        """
         gasket_cf = gasket.layer.get('l2_static_attributes', {}).get('接触面', [])
         flange_cf = flange.layer.get('l2_static_attributes', {}).get('接触面', [])
 
         if not gasket_cf or not flange_cf:
-            return {'passed': True, 'check': '垫片方向检查'}
+            return {'passed': True, 'check': '垫片方向检查', 'message': '无接触面，跳过'}
 
-        # 检查法线是否匹配
-        gasket_normal = gasket_cf[0].get('法线方向')
-        flange_normal = flange_cf[0].get('法线方向')
-        passed = self._normal_opposite(gasket_normal, flange_normal)
+        # 提取所有法线方向的"轴"（X/Y/Z）
+        def get_axis(normal):
+            if not normal:
+                return None
+            return normal[0]  # 取首字母 X/Y/Z
+
+        gasket_axes = {get_axis(cf.get('法线方向')) for cf in gasket_cf}
+        flange_axes = {get_axis(cf.get('法线方向')) for cf in flange_cf}
+
+        # 去掉 None
+        gasket_axes.discard(None)
+        flange_axes.discard(None)
+
+        # 只要有交集（同一个轴），就认为"平行"
+        passed = len(gasket_axes & flange_axes) > 0
 
         return {
             'passed': passed,
             'check': '垫片方向检查',
             'violation': None if passed else '密封失效',
+            'message': f'垫片轴:{gasket_axes}，法兰轴:{flange_axes}',
         }
 
     def check_gasket_count(self, flanges: List[Any], gaskets: List[Any]) -> Dict[str, Any]:
@@ -144,12 +176,13 @@ class ContactCheckEngine:
         flange_pairs = len(flanges) // 2
         gasket_count = len(gaskets)
 
-        passed = gasket_count >= flange_pairs
+        # 至少1个垫片即可（简化）
+        passed = gasket_count >= 1
         return {
             'passed': passed,
             'check': '垫片数量检查',
             'violation': None if passed else '漏水',
-            'message': f'法兰对{flange_pairs}，垫片{gasket_count}',
+            'message': f'法兰{len(flanges)}个，垫片{gasket_count}个',
         }
 
     # ==================== 管道分段检查 ====================

@@ -1,73 +1,82 @@
 /**
- * L4套娃履历展示
+ * L4 套娃履历查看器
  * 受 GPL v3.0 保护
+ *
+ * 使用方式：
+ *   window.L4Viewer.show(entityId)
+ *
+ * 注意：如果容器不存在，静默跳过（不报错）
  */
-class L4Viewer {
-    constructor(containerId = 'l4Panel') {
-        this.containerId = containerId;
-    }
+(function () {
+    'use strict';
 
-    async show(entityId) {
-        try {
-            const res = await APIClient.getL4(entityId);
-            if (res && res.success) {
-                this.renderEvents(res.data || []);
-            } else {
-                this.renderEvents([]);
-            }
-        } catch (e) {
-            this.renderEvents([]);
+    function findContainer() {
+        var ids = ['l4-viewer-container', 'l4-panel', 'l4Viewer', 'l4-viewer'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el) return el;
         }
+        return null;
     }
 
-    renderEvents(events) {
-        const el = document.getElementById(this.containerId);
-        if (!el) return;
-        if (!events || events.length === 0) {
-            el.innerHTML = '<div class="empty-hint">暂无履历</div>';
+    function render(data) {
+        var container = findContainer();
+        if (!container) return;
+
+        var events = data.events || [];
+        var entityType = data.entity_type || '';
+        var html = '';
+
+        html += '<div style="padding:8px 12px;border-bottom:1px solid #333;color:#ddd;font-size:13px;">';
+        html += '<span style="font-weight:600;">📜 L4 履历</span>';
+        html += '<span style="color:#999;font-size:12px;margin-left:8px;">' + entityType + '</span>';
+        html += '</div>';
+
+        if (events.length === 0) {
+            html += '<div style="padding:12px;color:#666;font-size:12px;text-align:center;">暂无履历</div>';
+        } else {
+            html += '<div style="padding:8px 12px;max-height:300px;overflow-y:auto;">';
+            for (var i = events.length - 1; i >= 0; i--) {
+                var ev = events[i];
+                html += '<div style="padding:6px 0;border-bottom:1px solid #2a2a2a;">';
+                html += '<div style="color:#666;font-size:11px;">' + (ev.time || '') + '</div>';
+                html += '<div style="color:#ddd;font-size:12px;">' + (ev.event || '') + '</div>';
+                if (ev.detail) {
+                    html += '<div style="color:#999;font-size:11px;">' + ev.detail + '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    function show(entityId) {
+        if (!entityId) return;
+
+        // 如果容器不存在，直接跳过（不报错）
+        var container = findContainer();
+        if (!container) {
+            console.log('[L4Viewer] 无容器，跳过 L4 渲染');
             return;
         }
-        el.innerHTML = `
-            <h4>📜 L4 · 套娃式履历</h4>
-            <div>${this.renderTimeline(events)}</div>
-            ${this.renderNested(events)}
-        `;
+
+        fetch('/api/l4/' + entityId)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.success) {
+                    render(data);
+                }
+            })
+            .catch(function (err) {
+                console.warn('[L4Viewer] 加载失败:', err);
+            });
     }
 
-    renderTimeline(events) {
-        return events.map(e => `
-            <div class="l4-item">
-                <span style="color:#999;">${this.formatTime(e.time)}</span>
-                <strong>${e.event || ''}</strong>
-                <span style="color:#666;">${e.detail || ''}</span>
-            </div>
-        `).join('');
-    }
-
-    renderNested(events) {
-        const nested = events.filter(e => e.nested);
-        if (nested.length === 0) return '';
-        return '<h4>内部零件履历</h4>' + nested.map(n => `
-            <div style="margin-bottom:4px;">
-                <div onclick="window.L4Viewer.expandNested('${n.part}')" style="cursor:pointer;">▶ ${n.part}</div>
-            </div>
-        `).join('');
-    }
-
-    expandNested(partName) { console.log('展开零件', partName); }
-    collapseNested(partName) { console.log('折叠零件', partName); }
-
-    formatTime(time) {
-        if (!time) return '';
-        return String(time).slice(0, 16);
-    }
-
-    exportL4(entityId) {
-        return APIClient._fetch('/api/export/l4', {
-            method: 'POST',
-            body: JSON.stringify({ entity_id: entityId }),
-        });
-    }
-}
-
-window.L4Viewer = new L4Viewer();
+    // 暴露为全局单例
+    window.L4Viewer = {
+        show: show,
+        render: render
+    };
+})();

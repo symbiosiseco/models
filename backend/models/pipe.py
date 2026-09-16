@@ -5,25 +5,50 @@
 
 镀锌钢管。含受力点+接触面+分段规则。
 10米管道 = 6米 + 4米 + 卡箍（真实产品，不是一整条10米）。
+
+V2.0（阶段1）：PIPE_SPECS 从 pipes.json 读，消除硬编码。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
 from .physics_rules import pipe_cbm, pipe_force_points, pipe_contact_faces
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载管道规格 ====================
+
+# 默认值（JSON不存在时使用）
+_DEFAULT_PIPE_SPECS = {
+    'DN50':  {'outer': 60.3,  'wall': 3.8, 'weight': 5.3},
+    'DN80':  {'outer': 88.9,  'wall': 4.0, 'weight': 8.4},
+    'DN100': {'outer': 114.3, 'wall': 4.0, 'weight': 10.9},
+    'DN150': {'outer': 168.3, 'wall': 4.5, 'weight': 18.2},
+    'DN200': {'outer': 219.1, 'wall': 6.0, 'weight': 31.5},
+}
+
+
+def _load_pipe_specs() -> Dict[str, Dict[str, float]]:
+    """
+    从 backend/data/standards/pipes.json 加载管道规格。
+    JSON 里没有的 DN，用 _DEFAULT_PIPE_SPECS 的默认值。
+    """
+    specs = {}
+    for dn, default in _DEFAULT_PIPE_SPECS.items():
+        s = read_standard('pipes', dn)
+        specs[dn] = {
+            'outer': s.get('外径', default['outer']),
+            'wall': s.get('壁厚', default['wall']),
+            'weight': s.get('单位重量', default['weight']),
+        }
+    return specs
 
 
 class PipeEntity(BaseEntity):
     """管道实体"""
 
-    # 管道国标尺寸（GB/T 3091）
-    PIPE_SPECS = {
-        'DN50':  {'outer': 60.3,  'wall': 3.8, 'weight': 5.3},
-        'DN80':  {'outer': 88.9,  'wall': 4.0, 'weight': 8.4},
-        'DN100': {'outer': 114.3, 'wall': 4.0, 'weight': 10.9},
-        'DN150': {'outer': 168.3, 'wall': 4.5, 'weight': 18.2},
-        'DN200': {'outer': 219.1, 'wall': 6.0, 'weight': 31.5},
-    }
+    # ★ V2.0：从 JSON 加载（改一处JSON，所有管道跟着变）
+    PIPE_SPECS = _load_pipe_specs()
 
     # 管道标准长度
     STANDARD_LENGTH = 6000
@@ -113,14 +138,7 @@ class PipeEntity(BaseEntity):
         self.layer['r_layer']['系统'] = system
 
     def _calc_segments(self, length: float) -> Dict[str, Any]:
-        """
-        计算管道分段规则。
-
-        规则：
-            - 长度 ≤ 6000mm：不分段
-            - 长度 > 6000mm：6米 + 余量 + 卡箍
-            - 10米 = 6+4
-        """
+        """计算管道分段规则。"""
         if length <= self.STANDARD_LENGTH:
             return {
                 '总长': f'{length}mm',

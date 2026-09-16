@@ -5,25 +5,57 @@
 
 承载多专业管道。含受力点+接触面。
 注意：重力排水管不能放入综合支架（坡度要求）。
+
+V2.0（阶段1）：规格从 angles.json 读（槽钢10#，如JSON无则用默认）。
 """
 
 from typing import Dict, Any, List, Optional
 from .entity import BaseEntity
+from data.standard_reader import read_standard
 from config import config
+
+
+# ==================== 从JSON加载综合支架规格 ====================
+
+_COMPOSITE_ANGLE_KEY = '槽钢10#'  # 如果 angles.json 有，就读；没有就用默认
+
+_DEFAULT_COMPOSITE_SPECS = {
+    '综合支架': {
+        '规格': '槽钢10#',
+        '材质': 'Q235B',
+        '总承重': '1000kg',
+        '总重量': '12kg',
+    },
+}
+
+
+def _load_composite_specs() -> Dict[str, Dict[str, Any]]:
+    """从 angles.json 读槽钢规格，如没有则用默认。"""
+    angle = read_standard('angles', _COMPOSITE_ANGLE_KEY)
+    default = _DEFAULT_COMPOSITE_SPECS['综合支架']
+
+    # 如果有槽钢数据，算重量；否则保持默认
+    if angle:
+        angle_weight = angle.get('理论重量', 4.0)
+        total_weight = round(angle_weight * 3, 2)
+    else:
+        total_weight = 12.0
+
+    return {
+        '综合支架': {
+            '规格': angle.get('规格', default['规格']),
+            '材质': angle.get('材质', default['材质']),
+            '总承重': default['总承重'],
+            '总重量': f'{total_weight}kg',
+        },
+    }
 
 
 class CompositeSupportEntity(BaseEntity):
     """综合支架实体"""
 
-    # 规格
-    COMPOSITE_SPECS = {
-        '综合支架': {
-            '规格': '槽钢10#',
-            '材质': 'Q235B',
-            '总承重': '1000kg',
-            '总重量': '12kg',
-        },
-    }
+    # ★ V2.0：从 angles.json 加载
+    COMPOSITE_SPECS = _load_composite_specs()
 
     def __init__(self, index: int = 0, support_type: str = '综合支架',
                  x_pos: Optional[float] = None, pipes: Optional[List] = None,
@@ -34,7 +66,6 @@ class CompositeSupportEntity(BaseEntity):
         spec = self.COMPOSITE_SPECS.get(support_type, self.COMPOSITE_SPECS['综合支架'])
         pipes = pipes or []
 
-        # 受力点：槽钢顶面中心
         force_points = [
             {
                 'id': 'fp_beam_top',
@@ -46,7 +77,6 @@ class CompositeSupportEntity(BaseEntity):
             }
         ]
 
-        # 接触面：槽钢顶面（多专业管道）+ 底板底面（楼板）
         contact_faces = [
             {
                 'id': 'cf_beam_top',
@@ -72,7 +102,6 @@ class CompositeSupportEntity(BaseEntity):
             },
         ]
 
-        # L2层
         l2 = {
             '类型': support_type,
             '规格': spec['规格'],
@@ -85,14 +114,12 @@ class CompositeSupportEntity(BaseEntity):
             '包围盒': {'x': 200, 'y': 600, 'z': 400},
         }
 
-        # L3层
         l3 = {
             '绝对坐标': {'x': x_pos, 'y': -100, 'z': 2500},
             '承载管道列表': [],
             '受力点实时坐标': [],
         }
 
-        # CBM层：多专业综合受力
         cbm = {
             '物理规则': {
                 '包围盒': {'x': 200, 'y': 600, 'z': 400},
@@ -117,7 +144,7 @@ class CompositeSupportEntity(BaseEntity):
                 '支架间距': 3000,
                 '维护空间': 500,
                 '检查周期': '每年1次',
-                '禁止承载': ['重力排水管'],  # 坡度要求
+                '禁止承载': ['重力排水管'],
             },
         }
 
@@ -135,21 +162,15 @@ class CompositeSupportEntity(BaseEntity):
         self.pipes = list(pipes)
         self.space = space or config.SPACE_UNITS
 
-        # 添加初始管道
         for pipe in pipes:
             self.add_pipe(pipe)
 
     def add_pipe(self, pipe: Any) -> Dict[str, Any]:
-        """
-        添加承载管道。
-
-        规则：重力排水管不能放入综合支架（坡度要求）。
-        """
+        """添加承载管道。重力排水管不能放入综合支架。"""
         pipe_id = pipe.id if hasattr(pipe, 'id') else str(pipe)
         pipe_type = getattr(pipe, 'entity_type', '')
         pipe_system = pipe.layer.get('r_layer', {}).get('系统', '') if hasattr(pipe, 'layer') else ''
 
-        # 检查重力排水管
         if '重力排水' in pipe_system or '重力排水' in pipe_type:
             return {
                 'success': False,
@@ -178,15 +199,12 @@ class CompositeSupportEntity(BaseEntity):
         }
 
     def get_force_points(self):
-        """获取受力点"""
         return self.layer['l2_static_attributes'].get('受力点', [])
 
     def get_contact_faces(self):
-        """获取接触面"""
         return self.layer['l2_static_attributes'].get('接触面', [])
 
     def to_dict(self) -> Dict[str, Any]:
-        """转字典"""
         return {
             'id': self.id,
             'entity_type': '综合支架',
